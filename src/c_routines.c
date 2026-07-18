@@ -66,7 +66,7 @@ void initialize_beta(double *restrict beta, const double *restrict betaOld, cons
   int i, p, size, offset = 1;
   int pCat = nVars[0], pCont = nVars[1], pCatCat = 2*nVars[2], pContCont = 2*nVars[3], pCatCont = 2*nVars[4];
   int pCatOld = nVarsOld[0], pContOld = nVarsOld[1], pCatCatOld = 2*nVarsOld[2], pContContOld = 2*nVarsOld[3], pCatContOld = 2*nVarsOld[4];
-  int *restrict match;
+  const int *restrict match;
   /* intercept */
   beta[0] = betaOld[0];
   if (pCat>0){
