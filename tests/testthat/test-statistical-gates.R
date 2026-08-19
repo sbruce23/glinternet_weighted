@@ -208,8 +208,14 @@ test_that("native nonconvergence is exposed and cannot fail silently", {
   set.seed(450)
   X <- matrix(rnorm(120),40,3)
   y <- X[,1]-X[,2]+rnorm(40)
-  fit <- expect_warning(glinternet(X,y,rep(1,3),lambda=.01,maxIter=1,tol=1e-12),
-                        "without convergence")
+  warnings <- character()
+  fit <- withCallingHandlers(
+    glinternet(X,y,rep(1,3),lambda=.01,maxIter=1,tol=1e-12),
+    warning=function(w) {
+      warnings <<- c(warnings,conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_true(any(grepl("without convergence",warnings,fixed=TRUE)))
   expect_false <- function(x) expect_true(identical(x,FALSE))
   expect_false(fit$converged[length(fit$converged)])
   expect_equal(fit$iterations[length(fit$iterations)],1L)
@@ -225,9 +231,15 @@ test_that("cross-validation exposes fold nonconvergence", {
   set.seed(451)
   X <- matrix(rnorm(90),30,3)
   y <- X[,1]-X[,2]+rnorm(30)
-  fit <- expect_warning(glinternet.cv(X,y,rep(1,3),foldid=rep(1:3,each=10),
-                                      lambda=c(.05,.01),maxIter=1,tol=1e-12),
-                        "without convergence")
+  warnings <- character()
+  fit <- withCallingHandlers(
+    glinternet.cv(X,y,rep(1,3),foldid=rep(1:3,each=10),
+                  lambda=c(.05,.01),maxIter=1,tol=1e-12),
+    warning=function(w) {
+      warnings <<- c(warnings,conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_true(any(grepl("without convergence",warnings,fixed=TRUE)))
   expect_equal(dim(fit$foldConverged),c(3L,2L))
   expect_equal(dim(fit$foldIterations),c(3L,2L))
   expect_true(any(!fit$foldConverged))
