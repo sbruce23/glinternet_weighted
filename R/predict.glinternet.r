@@ -39,6 +39,17 @@ predict.glinternet = function(object, X, type=c("response", "link"), lambda=NULL
     levels = NULL
     Xcat = NULL
   }
+  predictionIndices = seq_along(object$betahat)
+  if (!is.null(lambda)) {
+    predictionIndices = match(lambda, object$lambda, 0)
+    if (any(predictionIndices==0)) stop("Input lambda sequence not used in model fitting.")
+  }
+  activeContPairs = unique(do.call(rbind, lapply(object$activeSet[predictionIndices], function(active) {
+    if (is.null(active) || is.null(active$contcont)) return(NULL)
+    cbind(which(object$numLevels==1)[active$contcont[,1]],
+          which(object$numLevels==1)[active$contcont[,2]])
+  })))
+  if (!is.null(activeContPairs)) validate_contcont_products(X, activeContPairs)
 
   #if lambda is null, predict on all the lambdas
   if (is.null(lambda)){  
@@ -47,9 +58,7 @@ predict.glinternet = function(object, X, type=c("response", "link"), lambda=NULL
     return(result)
   }
   #otherwise, match the lambda sequence with user's lambda
-  idx = match(lambda, object$lambda, 0)
-  if (any(idx==0)) stop("Input lambda sequence not used in model fitting.")
-  result = sapply(idx, function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family))
-  if (is.null(dim(result))) result = matrix(result, ncol=length(idx))
+  result = sapply(predictionIndices, function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family))
+  if (is.null(dim(result))) result = matrix(result, ncol=length(predictionIndices))
   return(result)
 }

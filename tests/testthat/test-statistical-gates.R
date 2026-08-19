@@ -221,6 +221,20 @@ test_that("native nonconvergence is exposed and cannot fail silently", {
   expect_equal(length(coef(fit)),pathLength)
 })
 
+test_that("cross-validation exposes fold nonconvergence", {
+  set.seed(451)
+  X <- matrix(rnorm(90),30,3)
+  y <- X[,1]-X[,2]+rnorm(30)
+  fit <- expect_warning(glinternet.cv(X,y,rep(1,3),foldid=rep(1:3,each=10),
+                                      lambda=c(.05,.01),maxIter=1,tol=1e-12),
+                        "without convergence")
+  expect_equal(dim(fit$foldConverged),c(3L,2L))
+  expect_equal(dim(fit$foldIterations),c(3L,2L))
+  expect_true(any(!fit$foldConverged))
+  expect_equal(length(fit$converged),1L)
+  expect_equal(length(fit$iterations),1L)
+})
+
 test_that("zero-weight DBL_MAX predictors cannot contaminate solver state", {
   set.seed(991)
   X <- cbind(rnorm(40),rnorm(40))

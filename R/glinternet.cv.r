@@ -50,19 +50,26 @@ glinternet.cv = function(X, Y, numLevels, nFolds=10, lambda=NULL, nLambda=50, la
       (1-y[positiveWeight])*log(1-yhat[positiveWeight])))/sum(weights)
   }
   loss = matrix(0, nFolds, nlambda)
+  foldConverged = matrix(TRUE, nFolds, nlambda)
+  foldIterations = matrix(0L, nFolds, nlambda)
 
   X=as.matrix(X)
   for (fold in 1:nFolds) {
     testIndex= (folds == fold)
     trainIndex = !testIndex
-    fitted = glinternet(X=X[trainIndex,,drop=FALSE], Y=Y[trainIndex], numLevels=numLevels,
+    fitted = withCallingHandlers(glinternet(X=X[trainIndex,,drop=FALSE], Y=Y[trainIndex], numLevels=numLevels,
                         lambda=lambda, nLambda=nlambda, lambdaMinRatio=lambdaMinRatio,
                         interactionCandidates=interactionCandidates, interactionPairs=interactionPairs,
                         screenLimit=screenLimit, numToFind=NULL, family=family, tol=tol,
                         maxIter=maxIter, verbose=verbose, numCores=numCores,
-                        weights=rawWeights[trainIndex])
+                        weights=rawWeights[trainIndex]), warning=function(w) {
+      if (grepl("FISTA reached maxIter", conditionMessage(w), fixed=TRUE))
+        invokeRestart("muffleWarning")
+    })
     YtestHat = predict(fitted, X[testIndex,,drop=FALSE], "response")
     loss[fold, ] = apply(YtestHat, 2, function(yhat) compute_loss(Y[testIndex], yhat, rawWeights[testIndex], family))
+    foldConverged[fold, ] = fitted$converged
+    foldIterations[fold, ] = fitted$iterations
     if(verbose) {
       cat("\n Done fold",fold,"\n")
     }
@@ -83,9 +90,18 @@ glinternet.cv = function(X, Y, numLevels, nFolds=10, lambda=NULL, nLambda=50, la
   bestIndex = which.min(cv)
   lambdaHat1Std = lambda[bestIndex1Std[1]]
   lambdaHat = lambda[bestIndex]
+  if (any(!foldConverged)) {
+    cells = which(!foldConverged, arr.ind=TRUE)
+    shown = apply(head(cells,10),1,function(cell) sprintf("fold %d/lambda %d",cell[1],cell[2]))
+    suffix = if (nrow(cells)>10) sprintf(" (and %d more)",nrow(cells)-10) else ""
+    warning(sprintf("%d cross-validation fit(s) reached maxIter without convergence: %s%s; CV selection may be unreliable",
+                    nrow(cells),paste(shown,collapse=", "),suffix),
+            call.=FALSE)
+  }
 
   # return fit on full dataset with chosen lambda
-  output = list(call=thisCall, glinternetFit=fullfitted, fitted=fullfitted$fitted[, bestIndex], activeSet=fullfitted$activeSet[bestIndex], betahat=fullfitted$betahat[bestIndex], lambda=lambda, lambdaHat=lambdaHat, lambdaHat1Std=lambdaHat1Std, cvErr=cv, cvErrStd=cvStd, family=family, numLevels=numLevels, nFolds=nFolds, foldid=folds, foldLoss=loss, foldWeight=foldMass, weights=rawWeights)
+  oneStdIndex = bestIndex1Std[1]
+  output = list(call=thisCall, glinternetFit=fullfitted, fitted=fullfitted$fitted[, bestIndex], activeSet=fullfitted$activeSet[bestIndex], betahat=fullfitted$betahat[bestIndex], lambda=lambda, lambdaHat=lambdaHat, lambdaHat1Std=lambdaHat1Std, cvErr=cv, cvErrStd=cvStd, family=family, numLevels=numLevels, nFolds=nFolds, foldid=folds, foldLoss=loss, foldWeight=foldMass, foldConverged=foldConverged, foldIterations=foldIterations, converged=fullfitted$converged[bestIndex], iterations=fullfitted$iterations[bestIndex], converged1Std=fullfitted$converged[oneStdIndex], iterations1Std=fullfitted$iterations[oneStdIndex], weights=rawWeights)
   class(output) = "glinternet.cv"
 
   return (output)

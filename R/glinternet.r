@@ -73,6 +73,9 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     }
     interactionPairs = unique(cbind(pmin(interactionPairs[,1], interactionPairs[,2]),
                                     pmax(interactionPairs[,1], interactionPairs[,2])))
+    validate_group_capacity(numLevels, interactionPairs=interactionPairs)
+    contPairRows = numLevels[interactionPairs[,1]] == 1 & numLevels[interactionPairs[,2]] == 1
+    validate_contcont_products(X, interactionPairs[contPairRows,,drop=FALSE], weights)
     pairs = list(contcont=NULL, catcat=NULL, catcont=NULL)
     for (i in 1:nrow(interactionPairs)) {
       left = interactionPairs[i, 1]
@@ -96,6 +99,15 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       }
     })
     interactionPairs = pairs
+  } else {
+    validate_group_capacity(numLevels, interactionCandidates=interactionCandidates)
+    if (length(contIndices) >= 2) {
+      contPairs = t(combn(contIndices,2))
+      if (!is.null(interactionCandidates))
+        contPairs = contPairs[contPairs[,1] %in% interactionCandidates |
+                              contPairs[,2] %in% interactionCandidates,,drop=FALSE]
+      validate_contcont_products(X, contPairs, weights)
+    }
   }
 
   # separate into categorical and continuous parts

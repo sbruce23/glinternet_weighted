@@ -143,6 +143,12 @@ test_that("CV folds are reproducible and normalized from arbitrary labels", {
   expect_equal(length(fit$cvErrStd),2L)
   expect_equal(length(fit$fitted),18L)
   expect_equal(dim(predict(fit,d$X)),c(18L,1L))
+  best <- which.min(fit$cvErr)
+  oneStd <- which(fit$lambda==fit$lambdaHat1Std)
+  expect_equal(fit$converged,fit$glinternetFit$converged[best])
+  expect_equal(fit$iterations,fit$glinternetFit$iterations[best])
+  expect_equal(fit$converged1Std,fit$glinternetFit$converged[oneStd])
+  expect_equal(fit$iterations1Std,fit$glinternetFit$iterations[oneStd])
 
   set.seed(326)
   a <- glinternet.cv(d$X,d$y,d$levels,nFolds=length(d$y),lambda=.1,
@@ -167,6 +173,22 @@ test_that("interaction pairs are unordered and deduplicated", {
   expect_equal(repeated$objValue,canonical$objValue,tolerance=1e-10)
   expect_equal(repeated$activeSet,canonical$activeSet)
   expect_equal(coef(repeated),coef(canonical),tolerance=1e-10)
+})
+
+test_that("oversized categorical groups fail before native allocation", {
+  X <- matrix(c(0,1,0,1),ncol=2)
+  y <- c(0,1)
+  huge <- c(50000,50000)
+  expect_error(glinternet(X,y,huge,interactionPairs=matrix(c(1,2),1,2)),
+               "interaction group exceeds native integer")
+  expect_error(glinternet(X,y,huge,interactionCandidates=1),
+               "interaction group exceeds native integer")
+  expect_error(glinternet(cbind(X[,1],c(0,1)),y,c(floor(.Machine$integer.max/2)+1,1),
+                          interactionPairs=matrix(c(1,2),1,2)),
+               "categorical-continuous interaction group")
+  expect_error(glinternet(cbind(X[,1],c(0,1)),y,c(floor(.Machine$integer.max/2)+1,1),
+                          interactionCandidates=2),
+               "categorical-continuous interaction group")
 })
 
 test_that("length-one lambda works through weighted cross-validation", {
@@ -271,6 +293,36 @@ test_that("zero-weight observations do not affect weighted moments", {
   v <- glinternet:::validate_weights(c(1,2,1,0), 4)
   expect_equal(glinternet:::standardize(x1, v)[1:3],
                glinternet:::standardize(x2, v)[1:3], tolerance=1e-14)
+})
+
+test_that("extreme finite continuous predictors retain their geometry", {
+  magnitude <- .Machine$double.xmax/2
+  x <- c(magnitude,-magnitude,magnitude,-magnitude)
+  y <- c(1,-1,1,-1)
+  fit <- glinternet(matrix(x,ncol=1),y,1,nLambda=3,maxIter=5000)
+  expect_true(any(fit$lambda > 0))
+  expect_true(any(abs(fit$fitted[,length(fit$lambda)]) > .5))
+  expect_equal(predict(fit,matrix(x,ncol=1)),fit$fitted,tolerance=1e-8)
+})
+
+test_that("unrepresentable continuous interactions fail clearly", {
+  x1 <- rep(c(1e300,1,-1e300,-1),5)
+  x2 <- rep(c(1,1e300,-1,-1e300),5)
+  X <- cbind(x1,x2)
+  active <- list(cat=NULL,cont=NULL,catcat=NULL,
+                 contcont=matrix(c(1,2),1,2),catcont=NULL)
+  expect_error(glinternet:::rescale_betahat(active,c(0,0,0,1),NULL,X,
+                                            rep(1,nrow(X)),NULL,nrow(X)),
+               "not representable on the original predictor scale")
+
+  set.seed(327)
+  safe <- matrix(rnorm(80),40,2)
+  response <- 3*safe[,1]*safe[,2]+rnorm(40,sd=.05)
+  fit <- glinternet(safe,response,c(1,1),lambda=.001,
+                    interactionPairs=matrix(c(1,2),1,2),maxIter=5000)
+  extreme <- safe[1,,drop=FALSE]
+  extreme[1,] <- .Machine$double.xmax/2
+  expect_error(predict(fit,extreme),"raw product outside the finite double range")
 })
 
 test_that("degenerate continuous products stay finite", {

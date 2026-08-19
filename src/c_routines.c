@@ -10,6 +10,27 @@
 
 static const double eps = 0.0; /* exact zero test retained for legacy sparsity */
 
+static void weighted_location_scale(const double *x, const double *weights, int n,
+                                    double *magnitude, double *meanScaled, double *normScaled){
+  int i;
+  *magnitude = 0.0;
+  for (i=0; i<n; i++) if (weights[i] > 0.0 && fabs(x[i]) > *magnitude) *magnitude = fabs(x[i]);
+  if (*magnitude == 0.0){
+    *magnitude = *normScaled = 1.0;
+    *meanScaled = 0.0;
+    return;
+  }
+  *meanScaled = 0.0;
+  for (i=0; i<n; i++) if (weights[i] > 0.0) *meanScaled += weights[i]*(x[i]/ *magnitude);
+  *meanScaled /= n;
+  *normScaled = 0.0;
+  for (i=0; i<n; i++) if (weights[i] > 0.0){
+    double centered = x[i]/ *magnitude - *meanScaled;
+    *normScaled += weights[i]*centered*centered;
+  }
+  *normScaled = (*normScaled > 1e-30) ? sqrt(*normScaled) : 1.0;
+}
+
 void retrieve_beta(const double *restrict beta, const int *restrict groupSizes, const int *restrict numGroups, int *restrict idx, int *restrict betaIdx){
   int i, p, offset = 0, numgroups = *numGroups, size;
   for (p=0; p<numgroups; p++){
@@ -175,7 +196,7 @@ SEXP R_initialize_beta(SEXP R_beta, SEXP R_betaOld, SEXP R_nVars, SEXP R_nVarsOl
 
 void rescale_beta(int *restrict x, double *restrict z, const double *restrict weights, const int *restrict nRows, const double *restrict beta, const int *restrict betaLen, const int *restrict nVars, const int *restrict numLevels, const int *restrict catIndices, const int *restrict contIndices, const int *restrict catcatIndices, const int *restrict contcontIndices, const int *restrict catcontIndices, double *restrict result){
   int i, p, size, n = *nRows, offset = 1;
-  double factor, mean, norm;
+  double factor, mean, norm, magnitude;
   double *restrict zOffsetPtr;
   int pCat = nVars[0], pCont = nVars[1], pCatCat = 2*nVars[2], pContCont = 2*nVars[3], pCatCont = 2*nVars[4];
   memcpy(result, beta, *betaLen * sizeof *beta);
@@ -193,19 +214,10 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
   if (pCont > 0){
     for (p=0; p<pCont; p++){
       zOffsetPtr = z + (contIndices[p]-1)*n;
-      mean = 0.0;
-      norm = 0.0;
-      for (i=0; i<n; i++){
-	if (weights[i] > 0.0){
-	  mean += weights[i]*zOffsetPtr[i];
-	  norm += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
-	}
-      }
-      mean /= n;
-      norm -= n*pow(mean, 2);
-      norm = (norm > 1e-30) ? sqrt(norm) : 1.0;
+      weighted_location_scale(zOffsetPtr, weights, n, &magnitude, &mean, &norm);
+      result[0] -= mean * result[offset] / norm;
+      result[offset] /= magnitude;
       result[offset] /= norm;
-      result[0] -= mean * result[offset];
       ++offset;
     }
   }
@@ -227,27 +239,17 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
     for (p=0; p<pContCont; p+=2){
       wOffsetPtr = z + (contcontIndices[p]-1)*n;
       zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
-      mean = norm = meanZ = normZ = 0.0;
-      for (i=0; i<n; i++){
-	if (weights[i] > 0.0){
-	  mean += weights[i]*wOffsetPtr[i];
-	  norm += weights[i]*wOffsetPtr[i]*wOffsetPtr[i];
-	  meanZ += weights[i]*zOffsetPtr[i];
-	  normZ += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
-	}
-      }
-      mean /= n;
-      meanZ /= n;
-      norm -= n*pow(mean, 2);
-      normZ -= n*pow(meanZ, 2);
-      norm = (norm > 1e-30) ? sqrt(norm) : 1.0;
-      normZ = (normZ > 1e-30) ? sqrt(normZ) : 1.0;
-      result[offset] /= (factor * norm);
-      result[offset+1] /= (factor * normZ);
-      result[0] -= mean*result[offset] + meanZ*result[offset+1];
+      double magnitudeZ;
+      weighted_location_scale(wOffsetPtr, weights, n, &magnitude, &mean, &norm);
+      weighted_location_scale(zOffsetPtr, weights, n, &magnitudeZ, &meanZ, &normZ);
+      result[0] -= mean*result[offset]/(factor*norm) + meanZ*result[offset+1]/(factor*normZ);
+      result[offset] /= factor * norm;
+      result[offset] /= magnitude;
+      result[offset+1] /= factor * normZ;
+      result[offset+1] /= magnitudeZ;
       meanProduct = normProduct = 0.0;
       for (i=0; i<n; i++){
-	product[i] = (wOffsetPtr[i]-mean) * (zOffsetPtr[i]-meanZ) / (norm*normZ);
+	product[i] = (wOffsetPtr[i]/magnitude-mean) * (zOffsetPtr[i]/magnitudeZ-meanZ) / (norm*normZ);
 	if (weights[i] > 0.0){
 	  meanProduct += weights[i]*product[i];
 	  normProduct += weights[i]*product[i]*product[i];
@@ -258,10 +260,15 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
       normProduct = (normProduct > 1e-30) ? sqrt(normProduct) : 1.0;
       result[offset+2] /= (factor * normProduct);
       result[0] -= meanProduct * result[offset+2];
-      result[offset+2] /= norm * normZ;
-      result[offset] -= meanZ * result[offset+2];
-      result[offset+1] -= mean * result[offset+2];
-      result[0] += mean * meanZ * result[offset+2];
+      {
+        double interactionScaled = result[offset+2];
+        result[0] += mean * meanZ * interactionScaled / (norm*normZ);
+        result[offset] -= meanZ * interactionScaled / (magnitude*norm*normZ);
+        result[offset+1] -= mean * interactionScaled / (magnitudeZ*norm*normZ);
+        result[offset+2] /= magnitude;
+        result[offset+2] /= magnitudeZ;
+        result[offset+2] /= norm * normZ;
+      }
       offset += 3;
     }
     free(product);
@@ -272,19 +279,11 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
     for (p=0; p<pCatCont; p+=2){
       zOffsetPtr = z + (catcontIndices[p+1]-1)*n;
       size = numLevels[catcontIndices[p]-1];
-      mean = norm = 0.0;
-      for (i=0; i<n; i++){
-	if (weights[i] > 0.0){
-	  mean += weights[i]*zOffsetPtr[i];
-	  norm += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
-	}
-      }
-      mean /= n;
-      norm -= n*pow(mean, 2);
-      norm = (norm > 1e-30) ? sqrt(norm) : 1.0;
+      weighted_location_scale(zOffsetPtr, weights, n, &magnitude, &mean, &norm);
       for (i=0; i<size; i++){
-	result[offset+size+i] /= (factor*norm);
-	result[offset+i] = result[offset+i]/factor1 - mean*result[offset+size+i];
+	double slopeScaled = result[offset+size+i] / (factor*norm);
+	result[offset+size+i] = slopeScaled / magnitude;
+	result[offset+i] = result[offset+i]/factor1 - mean*slopeScaled;
       }
       offset += 2*size;
     }

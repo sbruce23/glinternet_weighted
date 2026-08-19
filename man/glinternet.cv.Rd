@@ -76,6 +76,23 @@ verbose=FALSE, numCores=1, weights=NULL, foldid=NULL)
   \item{foldid}{The fold assignment used.}
   \item{foldLoss}{Matrix of per-fold mean validation losses.}
   \item{foldWeight}{Total raw validation weight in each fold.}
+  \item{foldConverged}{Logical matrix reporting convergence for every
+    fold/lambda training fit, with rows corresponding to normalized
+    \code{foldid} labels and columns to \code{lambda}. A warning is issued if
+    any entry is false because cross-validation selection may then be
+    unreliable.}
+  \item{foldIterations}{Integer matrix of cumulative FISTA iteration counts for
+    every fold/lambda training fit, with rows corresponding to normalized
+    \code{foldid} labels and columns to \code{lambda}.}
+  \item{converged}{Whether the full-data fit converged at \code{lambdaHat}.}
+  \item{iterations}{Cumulative FISTA iterations for the full-data fit at
+    \code{lambdaHat}.}
+  \item{converged1Std}{Whether the full-data fit converged at
+    \code{lambdaHat1Std}.}
+  \item{iterations1Std}{Cumulative FISTA iterations for the full-data fit at
+    \code{lambdaHat1Std}. Convergence information for all full-data path entries
+    is also available in \code{glinternetFit$converged} and
+    \code{glinternetFit$iterations}.}
   \item{weights}{The raw observation weights supplied to cross-validation.}
 }
 

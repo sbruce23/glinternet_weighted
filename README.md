@@ -48,9 +48,12 @@ Weights are case/frequency weights: they control each row's contribution to the
 likelihood. They are not inverse-variance analytic weights. Weights must be
 finite and nonnegative and must have a positive total. Zero weights are allowed
 and those rows make no contribution to fitting, screening, preprocessing
-moments, KKT checks, or validation loss. Internally, weights are normalized to
-sum to the number of observations, so multiplying all supplied weights by the
-same positive constant does not change the fitted path.
+moments, KKT checks, or validation loss through their values. Retained row count
+still defines weight normalization and group geometry, so adding or deleting a
+zero-weight row is not generally equivalent at the same numeric lambda.
+Internally, weights are normalized to sum to the number of observations, so
+multiplying all supplied weights by the same positive constant does not change
+the fitted path.
 
 For normalized weights $\widetilde w_i = n w_i / \sum_i w_i$, the fitted
 Gaussian path minimizes
@@ -103,6 +106,10 @@ comparisons across fits.
 
 For binomial cross-validation, choose stratified folds so that both response
 classes have positive total training weight in every fold.
+
+Cross-validation records convergence and iteration counts for every fold and
+lambda and warns if any training fit reaches `maxIter`; selection may be
+unreliable when that warning occurs.
 
 `weights = NULL` and all-one weights retain the original unweighted objective
 and lambda scale. Rescaling all weights by the same positive constant also

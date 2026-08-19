@@ -1,6 +1,6 @@
 useDynLib("glinternet", .registration=TRUE)
 export(glinternet, glinternet.cv)
-importFrom(utils,packageDescription)
+importFrom(utils,combn,head,packageDescription)
 
 importFrom("graphics", "abline", "axis", "plot", "segments","lines")
 importFrom("stats", "lm", "plogis", "predict", "setNames")

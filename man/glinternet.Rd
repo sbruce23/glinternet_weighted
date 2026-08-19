@@ -79,6 +79,10 @@ numCores = 1, weights = NULL)
   zero, the computed lambda grid is zero and the intercept-only path is
   returned. User-supplied lambda values must remain strictly positive.
 
+  For continuous-continuous candidates, raw products on positive-weight rows
+  must be finite. A fit also errors if a nonzero solver-scale interaction cannot
+  be represented by finite coefficients on the original predictor scale.
+
   The supplied values are case/frequency weights, not analytic inverse-variance
   weights. If \eqn{w_i} is the supplied weight, the implementation uses
   \eqn{v_i = n w_i / \sum_j w_j} and minimizes
@@ -87,9 +91,12 @@ numCores = 1, weights = NULL)
   \eqn{L=\log(1+\exp(\eta))-y\eta} for binomial data; the existing
   hierarchical group penalty is unchanged. Zero-weight observations are
   allowed and make no contribution to fitting, screening, KKT checks, or
-  preprocessing moments. Multiplying every weight by the same positive scalar
-  leaves the fitted path unchanged. Omitting weights, or supplying all-one
-  weights, retains the original unweighted objective and lambda scale.
+  preprocessing moments through their values. Retained row count still defines
+  normalization and group geometry, so adding or deleting a zero-weight row is
+  not generally equivalent at the same numeric lambda. Multiplying every weight
+  by the same positive scalar leaves the fitted path unchanged. Omitting
+  weights, or supplying all-one weights, retains the original unweighted
+  objective and lambda scale.
   Binomial fits require both response classes to have positive total weight.
 
   When \code{screenLimit} is used, it heuristically restricts the interaction

@@ -11,7 +11,13 @@ validate_weights = function(weights, n) {
   as.numeric(weights) / total * n
 }
 
-weighted_mean = function(x, weights) sum(weights * x) / sum(weights)
+weighted_mean = function(x, weights) {
+  positiveWeight = weights > 0
+  scale = max(abs(x[positiveWeight]))
+  if (scale == 0) return(0)
+  scaledMean = sum(weights[positiveWeight] * (x[positiveWeight] / scale)) / sum(weights[positiveWeight])
+  scale * max(-1, min(1, scaledMean))
+}
 
 initial_intercept = function(Y, weights, family) {
   mu = weighted_mean(Y, weights)

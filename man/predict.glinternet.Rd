@@ -14,7 +14,9 @@ the response scale. Also gives the option to return the link function.
   \item{object}{Fitted \code{"glinternet"} model object.}
   \item{X}{Finite numeric matrix of new values for which to make predictions.
   It must have the same number of variables as the training data. Categorical
-  columns must use integer codes in the fitted level range.}
+  columns must use integer codes in the fitted level range. Raw products for
+  continuous-continuous interactions active at the requested lambdas must be
+  representable within the finite double range; prediction errors otherwise.}
   \item{type}{Return fitted \code{Y}
     values or the link function.}
   \item{lambda}{User input lambda sequence. Must be subset of the

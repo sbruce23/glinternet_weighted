@@ -20,6 +20,10 @@
 - Add regression, validation, invariance, hierarchy, and cross-validation tests.
 - Harden native edge cases for restricted interaction pairs, degenerate weighted
   columns, zero-weight rows, and stalled or non-finite optimization steps.
+- Track convergence and iteration counts for every cross-validation fold/lambda
+  fit and warn when nonconvergence can make selection unreliable.
+- Use scale-safe continuous standardization and reject categorical group sizes
+  that exceed native integer limits before allocation.
 - Compute binomial null intercepts robustly from weighted class masses, including
   extremely imbalanced positive weights.
 - Replace assertion-style failures with clear validation errors for response,
