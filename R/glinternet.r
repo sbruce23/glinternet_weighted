@@ -12,26 +12,27 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   if (!is.numeric(X) || !ncol(X) || any(!is.finite(X)))
     stop("X must be a finite numeric matrix with at least one column")
   if (!is.numeric(numLevels) || length(numLevels) != ncol(X) ||
-      any(!is.finite(numLevels)) || any(numLevels != as.integer(numLevels)) ||
+      any(!is.finite(numLevels)) || any(numLevels > .Machine$integer.max) ||
+      any(numLevels != floor(numLevels)) ||
       any(numLevels < 1))
     stop("numLevels must contain one positive integer per column of X")
   if (nrow(X) != n) stop("X and Y must contain the same number of observations")
-  if (length(nLambda) != 1 || !is.finite(nLambda) || nLambda != as.integer(nLambda) || nLambda < 1)
+  if (length(nLambda) != 1 || !is.finite(nLambda) || nLambda > .Machine$integer.max || nLambda != floor(nLambda) || nLambda < 1)
     stop("nLambda must be a positive integer")
   if (length(lambdaMinRatio) != 1 || !is.finite(lambdaMinRatio) ||
       lambdaMinRatio <= 0 || lambdaMinRatio > 1)
     stop("lambdaMinRatio must be in (0, 1]")
   if (!is.null(screenLimit) && (length(screenLimit) != 1 || !is.finite(screenLimit) ||
-      screenLimit != as.integer(screenLimit) || screenLimit < 1))
+      screenLimit > .Machine$integer.max || screenLimit != floor(screenLimit) || screenLimit < 1))
     stop("screenLimit must be NULL or a positive integer")
   if (!is.null(numToFind) && (length(numToFind) != 1 || !is.finite(numToFind) ||
-      numToFind != as.integer(numToFind) || numToFind < 1))
+      numToFind > .Machine$integer.max || numToFind != floor(numToFind) || numToFind < 1))
     stop("numToFind must be NULL or a positive integer")
   if (length(tol) != 1 || !is.finite(tol) || tol <= 0)
     stop("tol must be a finite positive number")
-  if (length(maxIter) != 1 || !is.finite(maxIter) || maxIter != as.integer(maxIter) || maxIter < 1)
+  if (length(maxIter) != 1 || !is.finite(maxIter) || maxIter > .Machine$integer.max || maxIter != floor(maxIter) || maxIter < 1)
     stop("maxIter must be a positive integer")
-  if (length(numCores) != 1 || !is.finite(numCores) || numCores != as.integer(numCores) || numCores < 1)
+  if (length(numCores) != 1 || !is.finite(numCores) || numCores > .Machine$integer.max || numCores != floor(numCores) || numCores < 1)
     stop("numCores must be a positive integer")
   weights = validate_weights(weights, n)
   pCat = sum(numLevels > 1)
@@ -40,7 +41,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     stop("Error:family=binomial but Y not in {0,1}")
   }
   for (i in seq_len(ncol(X))) {
-    if (numLevels[i]>1 && any(X[,i] != as.integer(X[,i]) | X[,i] < 0 | X[,i] >= numLevels[i])) {
+    if (numLevels[i]>1 && any(X[,i] != floor(X[,i]) | X[,i] < 0 | X[,i] >= numLevels[i])) {
       stop(sprintf("Column %d of X is categorical, but not coded as {0, 1, ...}. Refer to glinternet help on what the X argument should be.", i))
     }
   }
@@ -49,7 +50,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   catIndices = which(numLevels > 1)
   if (!is.null(interactionCandidates)) {
     if (!is.numeric(interactionCandidates) || any(!is.finite(interactionCandidates)) ||
-        any(interactionCandidates != as.integer(interactionCandidates)) ||
+        any(interactionCandidates > .Machine$integer.max) ||
+        any(interactionCandidates != floor(interactionCandidates)) ||
         any(interactionCandidates < 1 | interactionCandidates > ncol(X)))
       stop("interactionCandidates must contain valid integer column indices")
     interactionCandidates = unique(as.integer(interactionCandidates))
@@ -60,7 +62,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     # sanity check
     if (!is.matrix(interactionPairs) || ncol(interactionPairs) != 2 || !nrow(interactionPairs) ||
         !is.numeric(interactionPairs) || any(!is.finite(interactionPairs)) ||
-        any(interactionPairs != as.integer(interactionPairs)) ||
+        any(interactionPairs > .Machine$integer.max) ||
+        any(interactionPairs != floor(interactionPairs)) ||
         any(interactionPairs < 1 | interactionPairs > ncol(X)) ||
         any(interactionPairs[,1] == interactionPairs[,2])) {
       stop("interactionPairs must be a nonempty two-column matrix of distinct valid integer column indices")
@@ -68,6 +71,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     if (!is.null(interactionCandidates)) {
       stop("If interactionPairs is set, interactionCandidates must be NULL.")
     }
+    interactionPairs = unique(cbind(pmin(interactionPairs[,1], interactionPairs[,2]),
+                                    pmax(interactionPairs[,1], interactionPairs[,2])))
     pairs = list(contcont=NULL, catcat=NULL, catcont=NULL)
     for (i in 1:nrow(interactionPairs)) {
       left = interactionPairs[i, 1]
@@ -132,8 +137,8 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     if (!is.numeric(lambda) || !length(lambda) || any(!is.finite(lambda)) || any(lambda <= 0)) {
       stop("lambda must be a finite positive numeric vector")
     }
-    if (any(diff(lambda) > 0)) {
-      stop("Error: input lambda sequence is not monotone decreasing.")
+    if (any(diff(lambda) >= 0)) {
+      stop("input lambda sequence must be strictly decreasing")
     }
     lambdaMax = max(vapply(candidates$norms, function(x)
       if (is.null(x) || !length(x)) 0 else max(x), numeric(1)))

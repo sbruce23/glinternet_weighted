@@ -104,7 +104,8 @@ test_that("malformed model inputs fail clearly", {
   bad <- d$X; bad[1,1] <- .5
   expect_error(glinternet(bad,d$y,d$levels),"categorical")
   expect_error(glinternet(d$X,d$y,d$levels,lambda=c(.1,NA)),"finite positive")
-  expect_error(glinternet(d$X,d$y,d$levels,lambda=c(.1,.2)),"monotone decreasing")
+  expect_error(glinternet(d$X,d$y,d$levels,lambda=c(.1,.2)),"strictly decreasing")
+  expect_error(glinternet(d$X,d$y,d$levels,lambda=c(.1,.1,.05)),"strictly decreasing")
   expect_error(glinternet(d$X,d$y,d$levels,nLambda=0),"positive integer")
   expect_error(glinternet(d$X,d$y,d$levels,lambdaMinRatio=2),"lambdaMinRatio")
   expect_error(glinternet.cv(d$X,d$y,d$levels,nFolds=3,nLambda=0),"positive integer")
@@ -114,6 +115,58 @@ test_that("malformed model inputs fail clearly", {
   expect_error(glinternet(d$X,d$y,d$levels,tol=0),"finite positive")
   expect_error(glinternet(d$X,d$y,d$levels,maxIter=1.5),"positive integer")
   expect_error(glinternet(d$X,d$y,d$levels,numCores=0),"positive integer")
+  expect_error(glinternet(d$X,d$y,c(.Machine$integer.max+1,1,1)),"positive integer")
+  expect_error(glinternet(d$X,d$y,d$levels,nLambda=.Machine$integer.max+1),"positive integer")
+  expect_error(glinternet.cv(d$X,d$y,d$levels,foldid=rep(.Machine$integer.max+1,12)),
+               "integer label")
+})
+
+test_that("near-equal lambdas remain distinct and exactly selectable", {
+  d <- make_data(24)
+  lambda <- c(.1,.1-1e-14,.05)
+  fit <- glinternet(d$X,d$y,d$levels,lambda=lambda,weights=d$w,maxIter=4000)
+  expect_equal(fit$lambda,lambda,tolerance=0)
+  expect_equal(predict(fit,d$X,lambda=lambda[2]),fit$fitted[,2,drop=FALSE],tolerance=1e-10)
+  expect_equal(coef(fit,2)[[1]],glinternet:::extract_effects(
+    fit$betahat[[2]],fit$activeSet[[2]],fit$numLevels))
+})
+
+test_that("CV folds are reproducible and normalized from arbitrary labels", {
+  d <- make_data(18)
+  labels <- rep(c(30,10,90),each=6)
+  fit <- glinternet.cv(d$X,d$y,d$levels,lambda=c(.1,.05),weights=d$w,
+                       foldid=labels,maxIter=4000)
+  expect_equal(fit$foldid,rep(1:3,each=6))
+  expect_equal(dim(fit$foldLoss),c(3L,2L))
+  expect_equal(length(fit$foldWeight),3L)
+  expect_equal(length(fit$cvErr),2L)
+  expect_equal(length(fit$cvErrStd),2L)
+  expect_equal(length(fit$fitted),18L)
+  expect_equal(dim(predict(fit,d$X)),c(18L,1L))
+
+  set.seed(326)
+  a <- glinternet.cv(d$X,d$y,d$levels,nFolds=length(d$y),lambda=.1,
+                     weights=d$w,maxIter=4000)
+  set.seed(326)
+  b <- glinternet.cv(d$X,d$y,d$levels,nFolds=length(d$y),lambda=.1,
+                     weights=d$w,maxIter=4000)
+  expect_equal(a$foldid,b$foldid)
+  expect_equal(a$cvErr,b$cvErr,tolerance=1e-12)
+  expect_equal(dim(a$foldLoss),c(18L,1L))
+})
+
+test_that("interaction pairs are unordered and deduplicated", {
+  set.seed(325)
+  X <- matrix(rnorm(120),40,3)
+  y <- X[,1]+X[,2]+2*X[,1]*X[,2]+rnorm(40,sd=.1)
+  canonical <- glinternet(X,y,rep(1,3),lambda=.01,
+                          interactionPairs=matrix(c(1,2),1,2),maxIter=5000)
+  repeated <- glinternet(X,y,rep(1,3),lambda=.01,
+                         interactionPairs=rbind(c(1,2),c(2,1),c(1,2)),maxIter=5000)
+  expect_equal(repeated$fitted,canonical$fitted,tolerance=1e-10)
+  expect_equal(repeated$objValue,canonical$objValue,tolerance=1e-10)
+  expect_equal(repeated$activeSet,canonical$activeSet)
+  expect_equal(coef(repeated),coef(canonical),tolerance=1e-10)
 })
 
 test_that("length-one lambda works through weighted cross-validation", {
@@ -125,6 +178,70 @@ test_that("length-one lambda works through weighted cross-validation", {
   expect_equal(dim(fit$glinternetFit$fitted),c(24L,1L))
   expect_equal(dim(predict(fit$glinternetFit,d$X)),c(24L,1L))
   expect_equal(length(fit$cvErr),1)
+})
+
+test_that("early interaction stopping keeps every path component aligned", {
+  set.seed(324)
+  X <- matrix(rnorm(160), 40, 4)
+  y <- X[,1] + X[,2] + 3*X[,1]*X[,2] + rnorm(40, sd=.05)
+  requested <- c(.2, .1, .05, .02, .01)
+  fit <- glinternet(X, y, rep(1,4), lambda=requested, numToFind=1, maxIter=5000)
+  pathLength <- length(fit$lambda)
+  expect_true(pathLength < length(requested))
+  expect_equal(ncol(fit$fitted), pathLength)
+  expect_equal(length(fit$objValue), pathLength)
+  expect_equal(length(fit$activeSet), pathLength)
+  expect_equal(length(fit$betahat), pathLength)
+  expect_equal(length(fit$converged), pathLength)
+  expect_equal(length(fit$iterations), pathLength)
+  expect_equal(ncol(predict(fit, X)), pathLength)
+  expect_equal(length(coef(fit)), pathLength)
+})
+
+test_that("CV coefficient methods select the exact requested path index", {
+  d <- make_data(30)
+  folds <- rep(1:3, each=10)
+  fit <- glinternet.cv(d$X, d$y, d$levels, nLambda=4, weights=d$w,
+                       foldid=folds, maxIter=4000)
+  for (kind in c("lambdaHat", "lambdaHat1Std")) {
+    selected <- if (kind=="lambdaHat") fit$lambdaHat else fit$lambdaHat1Std
+    idx <- match(selected, fit$glinternetFit$lambda)
+    expect_equal(coef(fit, lambdaType=kind), coef(fit$glinternetFit, idx)[[1]])
+  }
+})
+
+test_that("single-lambda S3 methods and categorical prediction validation are stable", {
+  d <- make_data(30)
+  fit <- glinternet(d$X, d$y, d$levels, lambda=.05, weights=d$w, maxIter=4000)
+  expect_true(length(capture.output(print(fit))) > 0)
+  expect_equal(dim(predict(fit,d$X)),c(30L,1L))
+  expect_error(predict(fit,d$X,lambda=.05+1e-15),"not used")
+  unseen <- d$X; unseen[1,1] <- d$levels[1]
+  expect_error(predict(fit,unseen),"fitted integer codes")
+  fractional <- d$X; fractional[1,1] <- .5
+  expect_error(predict(fit,fractional),"fitted integer codes")
+
+  yb <- as.numeric(d$y > median(d$y))
+  binfit <- glinternet(d$X,yb,d$levels,lambda=.05,weights=d$w,
+                       family="binomial",maxIter=4000)
+  link <- predict(binfit,d$X,type="link")
+  response <- predict(binfit,d$X,type="response")
+  expect_equal(response,plogis(link),tolerance=1e-12)
+})
+
+test_that("single-lambda CV print plot and selections remain usable", {
+  d <- make_data(30)
+  folds <- rep(1:3,each=10)
+  fit <- glinternet.cv(d$X,d$y,d$levels,lambda=.05,weights=d$w,
+                       foldid=folds,maxIter=4000)
+  expect_true(length(capture.output(print(fit))) > 0)
+  pngfile <- tempfile(fileext=".png")
+  grDevices::png(pngfile)
+  plot(fit)
+  grDevices::dev.off()
+  expect_true(file.exists(pngfile))
+  expect_equal(dim(predict(fit,d$X)),c(30L,1L))
+  expect_equal(coef(fit),coef(fit$glinternetFit,1)[[1]])
 })
 
 test_that("degenerate zero-score data return a finite null path", {

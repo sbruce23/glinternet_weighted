@@ -21,6 +21,9 @@ The package contains compiled C code. A suitable compiler toolchain is required
 when installing from source. OpenMP is optional and enables `numCores > 1` on
 platforms that support it.
 
+A custom `lambda` sequence must be finite, positive, and strictly decreasing;
+every supplied value is fitted exactly, including a length-one sequence.
+
 ## Weighted fit
 
 ```r
@@ -107,7 +110,9 @@ leaves the result unchanged.
 
 `screenLimit` retains the package's original heuristic behavior: it restricts
 the interaction universe for speed and memory use. KKT checks cover retained
-candidates, so screened and unrestricted fits are not guaranteed to match.
+candidates and establish approximate first-order optimality for path entries
+with `converged = TRUE`, so screened and unrestricted fits are not guaranteed
+to match.
 
 See `?glinternet` and `?glinternet.cv` for the full API and returned objects.
 

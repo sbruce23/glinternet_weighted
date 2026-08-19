@@ -42,17 +42,17 @@ verbose=FALSE, numCores=1, weights=NULL, foldid=NULL)
   with equal fold masses this reduces to the fold-loss standard deviation
   divided by the square root of the number of folds. The one-standard-error
   choice is the largest lambda with error no greater than the minimum error plus
-  the standard error at the minimum. The \code{lambda} value that minimizes the average
-  error is returned, and a model with this \code{lambda} is fit to the
-  full data set. If \code{screenLimit} is set, its heuristic retained-candidate
+  the standard error at the minimum. The full lambda path is fit to the full
+  data set, and the selected components are extracted at \code{lambdaHat}.
+  If \code{screenLimit} is set, its heuristic retained-candidate
   semantics are the same as in \code{glinternet}. For binomial models, use
   suitably stratified folds so both response classes have positive total
   training weight in every fold.}
 \value{
   An object of class \code{glinternet.cv} with the components
   \item{call}{The user function call.}
-  \item{glinternetFit}{Glinternet object fitted on the full data using a
-    lambda sequence that terminates at \code{lambdaHat}.}
+  \item{glinternetFit}{Glinternet object containing the full lambda path fitted
+    to all observations.}
   \item{fitted}{Vector for fitted values (same length as \code{Y}). This
   is from the model fitted at \code{lambdaHat}.}
   \item{activeSet}{\code{activeSet} is a list variables found for the

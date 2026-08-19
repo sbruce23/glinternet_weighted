@@ -30,8 +30,9 @@ numCores = 1, weights = NULL)
   \item{lambda}{A user supplied \code{lambda} sequence. Typical usage
     is to have the program compute its own \code{lambda} sequence based on
     \code{nLambda} and \code{lambdaMinRatio}. Supplying a value of
-    \code{lambda} overrides this. Every supplied value is fitted exactly,
-    including when a single value is supplied.}
+    \code{lambda} overrides this. Values must be finite, positive, and strictly
+    decreasing; duplicates are rejected. Every supplied value is fitted
+    exactly, including when a single value is supplied.}
   \item{nLambda}{The number of \code{lambda} values. Default is 50.}
   \item{lambdaMinRatio}{Smallest value for \code{lambda}, as a fraction of
     \code{lambdaMax}, the (data derived) entry value (i.e. the smallest
@@ -44,7 +45,8 @@ numCores = 1, weights = NULL)
     indices. This will force the algorithm to only consider the interaction
     pairs defined by this matrix. For example, matrix(c(1,2,1,5),
     ncol=2, byrow=TRUE) restricts the model to two interaction pairs:
-    one between variables 1 and 2, and another between 1 and 5.}
+    one between variables 1 and 2, and another between 1 and 5. Pair order is
+    ignored and duplicate pairs are removed.}
   \item{screenLimit}{If not null (the default), limits the size of the interaction
     search space to \code{screenLimit} x nvars by only considering
     interactions with the best \code{screenLimit} candidate main effects
@@ -92,7 +94,8 @@ numCores = 1, weights = NULL)
 
   When \code{screenLimit} is used, it heuristically restricts the interaction
   candidate universe. Consequently, the result can differ from an unrestricted
-  fit; KKT and optimum guarantees apply within the retained candidates only.
+  fit; for path entries with \code{converged = TRUE}, KKT checks and approximate
+  first-order optimality apply within the retained candidates only.
 }
 \value{
   An object of class \code{glinternet} with the components
@@ -107,7 +110,7 @@ numCores = 1, weights = NULL)
     the corresponding value set to \code{FALSE} and a warning is issued.}
   \item{iterations}{Cumulative FISTA iteration count for each fitted lambda,
     including any KKT repair solves.}
-  \item{activeSet}{A list (of length \code{nLambda}) of the variables found. Internally, the
+  \item{activeSet}{A list (of length \code{lambda}) of the variables found. Internally, the
     categorical and continuous variables are separated into two groups,
     and each has their own indexing system (1-based). For example, the
     categorical-continuous interaction \code{c(i, j)} refers to the

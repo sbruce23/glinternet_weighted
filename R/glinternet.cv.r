@@ -8,10 +8,6 @@ glinternet.cv = function(X, Y, numLevels, nFolds=10, lambda=NULL, nLambda=50, la
   n = length(Y)
   rawWeights = if (is.null(weights)) rep(1, n) else weights
   validate_weights(rawWeights, n)
-  pCat = sum(numLevels > 1)
-  pCont = length(numLevels) - pCat
-  stopifnot(n==nrow(X), pCat+pCont==ncol(X), family=="gaussian"||family=="binomial")
-
   fullfitted = glinternet(X=X, Y=Y, numLevels=numLevels, lambda=lambda, nLambda=nLambda,
                          lambdaMinRatio=lambdaMinRatio, interactionCandidates=interactionCandidates,
                          interactionPairs=interactionPairs, screenLimit=screenLimit, family=family,
@@ -25,12 +21,14 @@ glinternet.cv = function(X, Y, numLevels, nFolds=10, lambda=NULL, nLambda=50, la
 
   # create the folds
   if (is.null(foldid)) {
-    if (length(nFolds) != 1 || !is.finite(nFolds) || nFolds != as.integer(nFolds) || nFolds < 2 || nFolds > n) {
+    if (length(nFolds) != 1 || !is.finite(nFolds) || nFolds > .Machine$integer.max ||
+        nFolds != floor(nFolds) || nFolds < 2 || nFolds > n) {
       stop("nFolds must be an integer between 2 and n")
     }
     folds = sample(rep(seq_len(nFolds), length.out=n))
   } else {
-    if (length(foldid) != n || any(!is.finite(foldid)) || any(foldid != as.integer(foldid))) {
+    if (!is.numeric(foldid) || length(foldid) != n || any(!is.finite(foldid)) ||
+        any(abs(foldid) > .Machine$integer.max) || any(foldid != floor(foldid))) {
       stop("foldid must contain one finite integer label per observation")
     }
     folds = match(foldid, unique(foldid))

@@ -12,9 +12,9 @@ the response scale. Also gives the option to return the link function.
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{Fitted \code{"glinternet"} model object.}
-  \item{X}{Matrix of new values for which to make predictions. Must have
-  the same number of variables as during training the model, and all the
-  variables must have the same number of levels.}
+  \item{X}{Finite numeric matrix of new values for which to make predictions.
+  It must have the same number of variables as the training data. Categorical
+  columns must use integer codes in the fitted level range.}
   \item{type}{Return fitted \code{Y}
     values or the link function.}
   \item{lambda}{User input lambda sequence. Must be subset of the

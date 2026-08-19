@@ -1,6 +1,6 @@
 \name{plot.glinternet.cv}
 \alias{plot.glinternet.cv}
-\title{Plot CV error from \code{glinternetCV} object.}
+\title{Plot CV error from \code{glinternet.cv} object.}
 \description{Plots the cross validation error against the lambda index. Uses \code{ggplot2} if found on the user's system.
 }
 \usage{
@@ -9,7 +9,7 @@
 
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{x}{\code{"glinternetCV"} object.}
+  \item{x}{\code{"glinternet.cv"} object.}
   \item{\dots}{Not used.}
 }
 

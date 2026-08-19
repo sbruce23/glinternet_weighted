@@ -19,7 +19,16 @@ predict.glinternet = function(object, X, type=c("response", "link"), lambda=NULL
   n = nrow(X)
   pCat = sum(object$numLevels > 1)
   pCont = length(object$numLevels) - pCat
-  stopifnot(pCat+pCont==ncol(X))
+  if (!is.numeric(X) || ncol(X) != pCat+pCont || any(!is.finite(X)))
+    stop("X must be a finite numeric matrix with the fitted number of columns")
+  if (pCat > 0) {
+    categoricalX = X[, object$numLevels > 1, drop=FALSE]
+    categoricalLevels = object$numLevels[object$numLevels > 1]
+    validCategory = categoricalX == floor(categoricalX) & categoricalX >= 0 &
+      sweep(categoricalX, 2, categoricalLevels, "<")
+    if (any(!validCategory))
+      stop("categorical predictors must use fitted integer codes from 0 to numLevels-1")
+  }
   if (pCont > 0) Z = matrix(X[, object$numLevels==1], nrow=n) else Z = NULL
   if (pCat > 0){
     catIndices = which(object$numLevels > 1)

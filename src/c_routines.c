@@ -426,8 +426,8 @@ void compute_norms_cat(int *restrict x, double *restrict r, int *restrict nRows,
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, r, n, p, result) private(i, j, offset, len, temp)
+#endif
   for (j=0; j<p; j++){
     offset = j*n;
     len = numLevels[j];
@@ -471,8 +471,8 @@ void compute_norms_cat_cat(int *restrict x, double *restrict r, int *restrict nR
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, r, n, p, numLevels, xIndices, yIndices, result) private(i, j, xOffset, yOffset, len, xlevels, temp)
+#endif
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;  //R uses 1-based indexing
     yOffset = (yIndices[j] - 1)*n;
@@ -522,8 +522,8 @@ void compute_norms_cat_cont(int *restrict x, double *restrict z, double *restric
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, z, catNorms, r, n, p, numLevels, xIndices, zIndices, result) private(i, j, xOffset, zOffset, levels, temp)
+#endif
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;
     zOffset = (zIndices[j] - 1)*n;
@@ -578,8 +578,8 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
+#endif
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;
     yOffset = (yIndices[j] - 1)*n;

@@ -213,6 +213,12 @@ test_that("native nonconvergence is exposed and cannot fail silently", {
   expect_false <- function(x) expect_true(identical(x,FALSE))
   expect_false(fit$converged[length(fit$converged)])
   expect_equal(fit$iterations[length(fit$iterations)],1L)
+  pathLength <- length(fit$lambda)
+  expect_equal(ncol(fit$fitted),pathLength)
+  expect_equal(c(length(fit$objValue),length(fit$activeSet),length(fit$betahat),
+                 length(fit$converged),length(fit$iterations)),rep(pathLength,5))
+  expect_equal(ncol(predict(fit,X)),pathLength)
+  expect_equal(length(coef(fit)),pathLength)
 })
 
 test_that("zero-weight DBL_MAX predictors cannot contaminate solver state", {
