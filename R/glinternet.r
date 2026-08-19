@@ -108,9 +108,13 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   betahat = vector("list", nLambda)
   betahat[[1]] = intercept
   objValue = rep(0, nLambda)
+  converged = rep(TRUE, nLambda)
+  iterations = integer(nLambda)
   softplus = pmax(intercept, 0) + log1p(exp(-abs(intercept)))
-  objValue[1] = ifelse(family=="gaussian", sum(weights * res^2)/(2*n),
-                       sum(weights * (softplus - Y * intercept))/n)
+  positiveWeight = weights > 0
+  objValue[1] = ifelse(family=="gaussian",
+                       sum(weights[positiveWeight] * res[positiveWeight]^2)/(2*n),
+                       sum(weights[positiveWeight] * (softplus - Y[positiveWeight] * intercept))/n)
 
   # ever-active set + sequential strong rules + group lasso
   for (i in 2:nLambda){
@@ -126,6 +130,13 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
       betahat[[i]] = solution$betahat
       res = solution$res
       objValue[i] = solution$objValue
+      converged[i] = solution$converged
+      iterations[i] = iterations[i] + solution$iterations
+      if (!solution$converged) {
+        warning(sprintf("FISTA reached maxIter=%d without convergence at lambda index %d", maxIter, i),
+                call.=FALSE)
+        break
+      }
       # check kkt conditions on the rest
       check = check_kkt(Xcat, Z, res, weights, n, pCat, pCont, levels, candidates, activeSet[[i]], lambda[i], numCores)
       candidates$norms = check$norms
@@ -154,7 +165,10 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   Z = as.matrix(X[, numLevels==1])
   betahatRescaled = lapply(1:i, function(j) rescale_betahat(activeSet[[j]], betahat[[j]], Xcat, Z, weights, levels, n))
 
-  output = list(call=thisCall, fitted=fitted[, 1:i], lambda=lambda[1:i], objValue=objValue, activeSet=activeSet[1:i], betahat=betahatRescaled[1:i], numLevels=numLevels, family=family, weights=weights)
+  output = list(call=thisCall, fitted=fitted[, 1:i], lambda=lambda[1:i], objValue=objValue,
+                activeSet=activeSet[1:i], betahat=betahatRescaled[1:i], numLevels=numLevels,
+                family=family, weights=weights, converged=converged[1:i],
+                iterations=iterations[1:i])
   class(output) = "glinternet"
 
   return (output)

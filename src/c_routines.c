@@ -196,8 +196,10 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
       mean = 0.0;
       norm = 0.0;
       for (i=0; i<n; i++){
-	mean += weights[i]*zOffsetPtr[i];
-	norm += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
+	if (weights[i] > 0.0){
+	  mean += weights[i]*zOffsetPtr[i];
+	  norm += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
+	}
       }
       mean /= n;
       norm -= n*pow(mean, 2);
@@ -227,10 +229,12 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
       zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
       mean = norm = meanZ = normZ = 0.0;
       for (i=0; i<n; i++){
-	mean += weights[i]*wOffsetPtr[i];
-	norm += weights[i]*wOffsetPtr[i]*wOffsetPtr[i];
-	meanZ += weights[i]*zOffsetPtr[i];
-	normZ += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
+	if (weights[i] > 0.0){
+	  mean += weights[i]*wOffsetPtr[i];
+	  norm += weights[i]*wOffsetPtr[i]*wOffsetPtr[i];
+	  meanZ += weights[i]*zOffsetPtr[i];
+	  normZ += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
+	}
       }
       mean /= n;
       meanZ /= n;
@@ -244,8 +248,10 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
       meanProduct = normProduct = 0.0;
       for (i=0; i<n; i++){
 	product[i] = (wOffsetPtr[i]-mean) * (zOffsetPtr[i]-meanZ) / (norm*normZ);
-	meanProduct += weights[i]*product[i];
-	normProduct += weights[i]*product[i]*product[i];
+	if (weights[i] > 0.0){
+	  meanProduct += weights[i]*product[i];
+	  normProduct += weights[i]*product[i]*product[i];
+	}
       }
       meanProduct /= n;
       normProduct -= n*pow(meanProduct, 2);
@@ -268,8 +274,10 @@ void rescale_beta(int *restrict x, double *restrict z, const double *restrict we
       size = numLevels[catcontIndices[p]-1];
       mean = norm = 0.0;
       for (i=0; i<n; i++){
-	mean += weights[i]*zOffsetPtr[i];
-	norm += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
+	if (weights[i] > 0.0){
+	  mean += weights[i]*zOffsetPtr[i];
+	  norm += weights[i]*zOffsetPtr[i]*zOffsetPtr[i];
+	}
       }
       mean /= n;
       norm -= n*pow(mean, 2);
@@ -579,13 +587,15 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
     mean = norm = 0.0;
     for (i=0; i<n; i++){
       product[i] = x[xOffset+i]*x[yOffset+i];
-      mean += weights[i]*product[i];
-      norm += weights[i]*product[i]*product[i];
+      if (weights[i] > 0.0){
+        mean += weights[i]*product[i];
+        norm += weights[i]*product[i]*product[i];
+      }
     }
     mean /= n;
     temp = 0.0;
     for (i=0; i<n; i++){
-      temp += r[i]*(product[i]-mean);
+      if (weights[i] > 0.0) temp += r[i]*(product[i]-mean);
     }
     norm -= n*pow(mean, 2);
     result[j] += pow(n, 2)*(pow(contNorms[xIndices[j]-1], 2) + pow(contNorms[yIndices[j]-1], 2)) + (norm > 1e-30 ? pow(temp, 2)/norm : 0);

@@ -24,7 +24,9 @@ get_candidates = function(X, Z, res, weights, n, pCat, pCont, numLevels, interac
   if (!is.null(interactionPairs)) {
     # if interactionPairs is specified, no need to compute the candidate interactions
     for (type in names(interactionPairs)) {
-      candidates$variables[[type]] = interactionPairs[[type]]
+      # Single-bracket assignment preserves the five fixed group slots when
+      # an interaction type is NULL; [[<- NULL would delete the list element.
+      candidates$variables[type] = list(interactionPairs[[type]])
     }
   } else {
     # generate all interactions or screen

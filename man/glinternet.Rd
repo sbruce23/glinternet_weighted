@@ -97,6 +97,11 @@ numCores = 1, weights = NULL)
     likely to stop before all \code{nLambda} models have been fit.}
   \item{lambda}{The actual \code{lambda} sequence used.}
   \item{objValue}{Objective values for each lambda.}
+  \item{converged}{Logical vector indicating whether FISTA converged for each
+    fitted lambda. If an iteration limit is reached, the fit is returned with
+    the corresponding value set to \code{FALSE} and a warning is issued.}
+  \item{iterations}{Cumulative FISTA iteration count for each fitted lambda,
+    including any KKT repair solves.}
   \item{activeSet}{A list (of length \code{nLambda}) of the variables found. Internally, the
     categorical and continuous variables are separated into two groups,
     and each has their own indexing system (1-based). For example, the

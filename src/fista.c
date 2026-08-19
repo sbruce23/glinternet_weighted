@@ -111,8 +111,10 @@ void x_times_beta(int *restrict x, double *restrict z, const double *restrict we
       for (i=0; i<n; i++){
 	result[i] += (wOffsetPtr[i]*beta[offset] + zOffsetPtr[i]*beta[offset+1]) / factor;
 	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += weights[i]*product[i];
-	norm += weights[i]*product[i]*product[i];
+	if (weights[i] > 0.0){
+	  mean += weights[i]*product[i];
+	  norm += weights[i]*product[i]*product[i];
+	}
       }
       mean /= n;
       norm -= n*pow(mean, 2);
@@ -160,13 +162,14 @@ double compute_loglik(const double *restrict y, const double *restrict weights, 
   int i, n = *nRows;
   if (*family == 0){
     for (i=0; i<n; i++){
-      result += weights[i]*pow(y[i]-mu-linear[i], 2);
+      if (weights[i] > 0.0) result += weights[i]*pow(y[i]-mu-linear[i], 2);
     }
     result /= (2*n);
   }
   else {
     for (i=0; i<n; i++){
-      result += weights[i]*(-y[i]*(mu+linear[i]) + softplus(mu+linear[i]));
+      if (weights[i] > 0.0)
+        result += weights[i]*(-y[i]*(mu+linear[i]) + softplus(mu+linear[i]));
     }
     result /= n;
   }
@@ -177,11 +180,12 @@ void compute_objective(const double *restrict y, const double *restrict weights,
   int i, j, size, n = *nRows, numgroups = *numGroups, offset = 0;
   double loglik = 0.0, penalty = 0.0, mu = *intercept, temp;
   if (*family == 0){
-    for (i=0; i<n; i++) loglik += weights[i]*res[i]*res[i];
+    for (i=0; i<n; i++) if (weights[i] > 0.0) loglik += weights[i]*res[i]*res[i];
     loglik /= (2*n);
   }
   else {
-    for (i=0; i<n; i++) loglik += weights[i]*(-y[i]*(mu+linear[i]) + softplus(mu+linear[i]));
+    for (i=0; i<n; i++) if (weights[i] > 0.0)
+      loglik += weights[i]*(-y[i]*(mu+linear[i]) + softplus(mu+linear[i]));
     loglik /= n;
   }
   for (i=0; i<numgroups; i++){
@@ -263,8 +267,10 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, c
       mean = norm = 0.0;
       for (i=0; i<n; i++){
 	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += weights[i]*product[i];
-	norm += weights[i]*product[i]*product[i];
+	if (weights[i] > 0.0){
+	  mean += weights[i]*product[i];
+	  norm += weights[i]*product[i]*product[i];
+	}
       }
       mean /= n;
       norm -= n*pow(mean, 2);
@@ -510,7 +516,7 @@ double compute_stepsize(const double *restrict gradient, const double *restrict 
   return (R_FINITE(step) && step > 0.0) ? step : 1.0;
 }
 
-void gl_solver(int *restrict x, double *restrict z, double *restrict y, double *restrict weights, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family, int *restrict verbose){
+void gl_solver(int *restrict x, double *restrict z, double *restrict y, double *restrict weights, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, int *restrict iterations, double *restrict objValue, double *restrict steps, int *restrict family, int *restrict verbose){
   /* initialize required variables */
   int i, gradientLength, iter, converged, n = *nRows;
   int numGroups = nVars[0] + nVars[1] + nVars[2] + nVars[3] + nVars[4];
@@ -536,7 +542,8 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, double *
     /* compute gradient */
     memcpy(gradientOld, gradient, gradientLength * sizeof *gradient);
     memset(gradient, 0, gradientLength * sizeof *gradient);
-    for (i=0; i<n; i++) weightedResidual[i] = weights[i]*residual[i];
+    for (i=0; i<n; i++)
+      weightedResidual[i] = weights[i] > 0.0 ? weights[i]*residual[i] : 0.0;
     compute_gradient(x, z, weightedResidual, weights, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, gradient);
     /* check convergence */
     converged = check_convergence(beta, gradient, groupSizes, &numGroups, lambda, tol);
@@ -568,6 +575,7 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, double *
     ++iter;
   }
   compute_objective(y, weights, residual, linear, intercept, beta, nRows, &numGroups, groupSizes, lambda, objValue, family);
+  *iterations = iter;
   if (*verbose) {
     Rprintf("Convergence in %d iters, obj=%.8f\n", iter, *objValue);
   }
@@ -607,6 +615,8 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_weights, SEXP R_nRows, SEX
   PROTECT(R_maxIter = coerceVector(R_maxIter, INTSXP));
   SEXP R_convergedFlag = PROTECT(allocVector(INTSXP, 1));
   memset(INTEGER(R_convergedFlag), 0, sizeof(int));
+  SEXP R_iterations = PROTECT(allocVector(INTSXP, 1));
+  memset(INTEGER(R_iterations), 0, sizeof(int));
   SEXP R_objValue = PROTECT(allocVector(REALSXP, 1));
   memset(REAL(R_objValue), 0, sizeof(double));
   SEXP R_steps = PROTECT(allocVector(REALSXP, asInteger(R_maxIter)));
@@ -634,21 +644,24 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_weights, SEXP R_nRows, SEX
   double *restrict alpha = REAL(R_alpha);
   int *restrict maxIter = INTEGER(R_maxIter);
   int *restrict convergedFlag = INTEGER(R_convergedFlag);
+  int *restrict iterations = INTEGER(R_iterations);
   double *restrict objValue = REAL(R_objValue);
   double *restrict steps = REAL(R_steps);
   int *restrict family = INTEGER(R_family);
   int *restrict verbose = INTEGER(R_verbose);
-  gl_solver(x, z, y, weights, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);
-  SEXP result = PROTECT(allocVector(VECSXP, 4));
+  gl_solver(x, z, y, weights, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, iterations, objValue, steps, family, verbose);
+  SEXP result = PROTECT(allocVector(VECSXP, 6));
   SET_VECTOR_ELT(result, 0, R_interceptCopy);
   SET_VECTOR_ELT(result, 1, R_betaCopy);
   SET_VECTOR_ELT(result, 2, R_residual);
   SET_VECTOR_ELT(result, 3, R_objValue);
-  const char *names[4] = {"mu", "coefficients", "res", "objValue"};
-  SEXP sNames = PROTECT(allocVector(STRSXP, 4));
+  SET_VECTOR_ELT(result, 4, R_convergedFlag);
+  SET_VECTOR_ELT(result, 5, R_iterations);
+  const char *names[6] = {"mu", "coefficients", "res", "objValue", "converged", "iterations"};
+  SEXP sNames = PROTECT(allocVector(STRSXP, 6));
   int i;
-  for (i=0; i<4; i++) SET_STRING_ELT(sNames, i, mkChar(names[i]));
+  for (i=0; i<6; i++) SET_STRING_ELT(sNames, i, mkChar(names[i]));
   setAttrib(result, R_NamesSymbol, sNames);
-  UNPROTECT(29);
+  UNPROTECT(30);
   return result;
 }

@@ -176,3 +176,41 @@ test_that("binomial intercept is stationary and frequency replication is equival
                predict(replicated,X,"response")[,length(replicated$lambda)],
                tolerance=2e-6)
 })
+
+test_that("restricted interaction pairs preserve fixed native group slots", {
+  set.seed(1003)
+  n <- 40
+  X <- cbind(sample(0:1,n,TRUE),rnorm(n),sample(0:2,n,TRUE),rnorm(n),rnorm(n))
+  y <- X[,2]-.5*X[,5]+rnorm(n)
+  fit <- glinternet(X,y,c(2,1,3,1,1),nLambda=4,
+                    interactionPairs=matrix(c(1,5),ncol=2),weights=runif(n),
+                    maxIter=5000)
+  expect_equal(length(fit$activeSet[[2]]),5)
+  expect_true(all(is.finite(c(fit$objValue,fit$fitted))))
+  expect_equal(predict(fit,X,"response"),fit$fitted,tolerance=1e-7)
+})
+
+test_that("zero-weight DBL_MAX responses contribute exactly zero", {
+  set.seed(990)
+  X <- cbind(rnorm(31),rnorm(31))
+  y <- 1+X[,1]+rnorm(31)
+  w <- c(0,rep(1,30))
+  extreme <- y
+  extreme[1] <- .Machine$double.xmax
+  a <- glinternet(X,extreme,c(1,1),lambda=c(.08,.02),weights=w,maxIter=5000)
+  b <- glinternet(X,y,c(1,1),lambda=c(.08,.02),weights=w,maxIter=5000)
+  expect_true(all(is.finite(c(a$objValue,a$fitted[-1,]))))
+  expect_equal(a$fitted[-1,],b$fitted[-1,],tolerance=1e-10)
+  expect_equal(a$objValue,b$objValue,tolerance=1e-10)
+})
+
+test_that("native nonconvergence is exposed and cannot fail silently", {
+  set.seed(450)
+  X <- matrix(rnorm(120),40,3)
+  y <- X[,1]-X[,2]+rnorm(40)
+  fit <- expect_warning(glinternet(X,y,rep(1,3),lambda=.01,maxIter=1,tol=1e-12),
+                        "without convergence")
+  expect_false <- function(x) expect_true(identical(x,FALSE))
+  expect_false(fit$converged[length(fit$converged)])
+  expect_equal(fit$iterations[length(fit$iterations)],1L)
+})

@@ -10,10 +10,12 @@ group_lasso = function(X, Z, Y, weights, activeSet, betahat, numLevels, lambda, 
     betahat = initial_intercept(Y, weights, family)
     mu = if (family == "gaussian") betahat else plogis(betahat)
     res = Y - mu
+    positiveWeight = weights > 0
     objValue = ifelse(family=="gaussian",
-                      sum(weights * res^2)/(2*length(Y)),
-                      sum(weights * (pmax(betahat, 0) + log1p(exp(-abs(betahat))) - Y * betahat))/length(Y))
-    return(list(betahat=betahat, activeSet=activeSet, res=res, objValue=objValue))
+                      sum(weights[positiveWeight] * res[positiveWeight]^2)/(2*length(Y)),
+                      sum(weights[positiveWeight] * (pmax(betahat, 0) + log1p(exp(-abs(betahat))) - Y[positiveWeight] * betahat))/length(Y))
+    return(list(betahat=betahat, activeSet=activeSet, res=res, objValue=objValue,
+                converged=TRUE, iterations=0L))
   }
 
   n = length(Y)
@@ -39,7 +41,8 @@ group_lasso = function(X, Z, Y, weights, activeSet, betahat, numLevels, lambda, 
   names(activeSet) = c("cat", "cont", "catcat", "contcont", "catcont")
 
   #output
-  list(betahat=beta, activeSet=activeSet, res=res, objValue=objValue)
+  list(betahat=beta, activeSet=activeSet, res=res, objValue=objValue,
+       converged=as.logical(fit$converged), iterations=as.integer(fit$iterations))
 }
 
 

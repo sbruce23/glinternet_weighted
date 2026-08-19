@@ -43,10 +43,13 @@ glinternet.cv = function(X, Y, numLevels, nFolds=10, lambda=NULL, nLambda=50, la
   # helper for loss calculation
   compute_loss = function(y, yhat, weights, family) {
     if (family == "gaussian") {
-      return (sum(weights*(y-yhat)^2)/(2*sum(weights)))
+      positiveWeight = weights > 0
+      return (sum(weights[positiveWeight]*(y[positiveWeight]-yhat[positiveWeight])^2)/(2*sum(weights)))
     }
     yhat = sapply(yhat, function(x) min(max(1e-15, x), 1-1e-15))
-    -sum(weights * (y*log(yhat) + (1-y)*log(1-yhat)))/sum(weights)
+    positiveWeight = weights > 0
+    -sum(weights[positiveWeight] * (y[positiveWeight]*log(yhat[positiveWeight]) +
+      (1-y[positiveWeight])*log(1-yhat[positiveWeight])))/sum(weights)
   }
   loss = matrix(0, nFolds, nlambda)
 
