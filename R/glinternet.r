@@ -1,4 +1,4 @@
-glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0.01, interactionCandidates=NULL, interactionPairs=NULL, screenLimit=NULL, numToFind=NULL, family=c("gaussian", "binomial"), tol=1e-5, maxIter=5000, verbose=FALSE, numCores=1) {
+glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0.01, interactionCandidates=NULL, interactionPairs=NULL, screenLimit=NULL, numToFind=NULL, family=c("gaussian", "binomial"), tol=1e-5, maxIter=5000, verbose=FALSE, numCores=1, weights=NULL) {
 
   # get call and family
   thisCall = match.call()
@@ -6,6 +6,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
 
   # make sure inputs are valid
   n = length(Y)
+  weights = validate_weights(weights, n)
   pCat = sum(numLevels > 1)
   pCont = length(numLevels) - pCat
   stopifnot(n==nrow(X), pCat+pCont==ncol(X), family=="gaussian"||family=="binomial")
@@ -58,7 +59,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   # separate into categorical and continuous parts
   if (pCont > 0) {
     continuousCandidates = NULL
-    Z = as.matrix(apply(as.matrix(X[, contIndices]), 2, standardize))
+    Z = as.matrix(apply(as.matrix(X[, contIndices, drop=FALSE]), 2, standardize, weights=weights))
     if (!is.null(interactionCandidates)) {
       continuousCandidates = which(contIndices %in% interactionCandidates)
     }
@@ -80,8 +81,10 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
 
   # compute variable norms
-  res = Y - mean(Y)
-  candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, interactionPairs, categoricalCandidates, continuousCandidates, screenLimit, numCores=numCores)
+  intercept = initial_intercept(Y, weights, family)
+  responseMean = if (family == "gaussian") intercept else plogis(intercept)
+  res = Y - responseMean
+  candidates = get_candidates(Xcat, Z, res, weights, n, pCat, pCont, levels, interactionPairs, categoricalCandidates, continuousCandidates, screenLimit, numCores=numCores)
 
   # lambda grid if not user provided
   if (is.null(lambda)) {
@@ -100,12 +103,14 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
   }
 
   # initialize storage for results
-  fitted = matrix(mean(Y), n, nLambda)
+  fitted = matrix(responseMean, n, nLambda)
   activeSet = vector("list", nLambda)
   betahat = vector("list", nLambda)
-  betahat[[1]] = ifelse(family=="gaussian", mean(Y), -log(1/mean(Y)-1))
+  betahat[[1]] = intercept
   objValue = rep(0, nLambda)
-  objValue[1] = ifelse(family=="gaussian", sum(res^2)/(2*n), -mean(Y)*betahat[[1]]+log(1/(1-mean(Y))))
+  softplus = pmax(intercept, 0) + log1p(exp(-abs(intercept)))
+  objValue[1] = ifelse(family=="gaussian", sum(weights * res^2)/(2*n),
+                       sum(weights * (softplus - Y * intercept))/n)
 
   # ever-active set + sequential strong rules + group lasso
   for (i in 2:nLambda){
@@ -116,13 +121,13 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     betahat[[i]] = initialize_betahat(activeSet[[i]], activeSet[[i-1]], betahat[[i-1]], levels)
     while (TRUE) {
       # group lasso on strong set
-      solution = group_lasso(Xcat, Z, Y, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter, verbose)
+      solution = group_lasso(Xcat, Z, Y, weights, activeSet[[i]], betahat[[i]], levels, lambda[i], family, tol, maxIter, verbose)
       activeSet[[i]] = solution$activeSet
       betahat[[i]] = solution$betahat
       res = solution$res
       objValue[i] = solution$objValue
       # check kkt conditions on the rest
-      check = check_kkt(Xcat, Z, res, n, pCat, pCont, levels, candidates, activeSet[[i]], lambda[i], numCores)
+      check = check_kkt(Xcat, Z, res, weights, n, pCat, pCont, levels, candidates, activeSet[[i]], lambda[i], numCores)
       candidates$norms = check$norms
       if (check$flag) {
         break
@@ -132,7 +137,7 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
     }
     # update the candidate set if necessary
     if (!is.null(screenLimit) && (screenLimit<pCat+pCont) && i<nLambda) {
-      candidates = get_candidates(Xcat, Z, res, n, pCat, pCont, levels, interactionPairs, categoricalCandidates, continuousCandidates, screenLimit, activeSet[[i]], candidates$norms, numCores)
+      candidates = get_candidates(Xcat, Z, res, weights, n, pCat, pCont, levels, interactionPairs, categoricalCandidates, continuousCandidates, screenLimit, activeSet[[i]], candidates$norms, numCores)
     }
     # get fitted values
     fitted[, i] = Y - res
@@ -147,9 +152,9 @@ glinternet = function(X, Y, numLevels, lambda=NULL, nLambda=50, lambdaMinRatio=0
 
   # rescale betahat
   Z = as.matrix(X[, numLevels==1])
-  betahatRescaled = lapply(1:i, function(j) rescale_betahat(activeSet[[j]], betahat[[j]], Xcat, Z, levels, n))
+  betahatRescaled = lapply(1:i, function(j) rescale_betahat(activeSet[[j]], betahat[[j]], Xcat, Z, weights, levels, n))
 
-  output = list(call=thisCall, fitted=fitted[, 1:i], lambda=lambda[1:i], objValue=objValue, activeSet=activeSet[1:i], betahat=betahatRescaled[1:i], numLevels=numLevels, family=family)
+  output = list(call=thisCall, fitted=fitted[, 1:i], lambda=lambda[1:i], objValue=objValue, activeSet=activeSet[1:i], betahat=betahatRescaled[1:i], numLevels=numLevels, family=family, weights=weights)
   class(output) = "glinternet"
 
   return (output)

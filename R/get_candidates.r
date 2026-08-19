@@ -1,4 +1,4 @@
-get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, interactionPairs, categoricalCandidates, continuousCandidates, screenLimit=NULL, activeSet=NULL, norms=NULL, numCores=1) {
+get_candidates = function(X, Z, res, weights, n, pCat, pCont, numLevels, interactionPairs, categoricalCandidates, continuousCandidates, screenLimit=NULL, activeSet=NULL, norms=NULL, numCores=1) {
 
   labels = c("cat", "cont", "catcat", "contcont", "catcont")
   candidates = list()
@@ -12,12 +12,12 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, interactionPairs
   # get main effect norms
   if (pCat > 0){
     candidates$variables$cat = matrix(1:pCat, ncol=1)
-    if (is.null(norms$cat)) candidates$norms$cat = compute_norms_cat(X, res, n, pCat, numLevels, numCores)
+    if (is.null(norms$cat)) candidates$norms$cat = compute_norms_cat(X, weights * res, n, pCat, numLevels, numCores)
     else candidates$norms$cat = norms$cat
   }
   if (pCont > 0){
     candidates$variables$cont = matrix(1:pCont, ncol=1)
-    if (is.null(norms$cont)) candidates$norms$cont = compute_norms_cont(Z, res, n)
+    if (is.null(norms$cont)) candidates$norms$cont = compute_norms_cont(Z, weights * res, n)
     else candidates$norms$cont = norms$cont
   }
 
@@ -95,13 +95,13 @@ get_candidates = function(X, Z, res, n, pCat, pCont, numLevels, interactionPairs
 
   #get interaction norms
   if (!is.null(candidates$variables$catcat)) {
-    candidates$norms$catcat = compute_norms_cat_cat(X, res, n, numLevels, candidates$variables$catcat, numCores)
+    candidates$norms$catcat = compute_norms_cat_cat(X, weights * res, n, numLevels, candidates$variables$catcat, numCores)
   }
   if (!is.null(candidates$variables$contcont)) {
-    candidates$norms$contcont = compute_norms_cont_cont(Z, candidates$norms$cont, res, n, candidates$variables$contcont, numCores)
+    candidates$norms$contcont = compute_norms_cont_cont(Z, candidates$norms$cont, weights * res, weights, n, candidates$variables$contcont, numCores)
   }
   if (!is.null(candidates$variables$catcont)) {
-    candidates$norms$catcont = compute_norms_cat_cont(X, Z, candidates$norms$cat, res, n, numLevels, candidates$variables$catcont, numCores)
+    candidates$norms$catcont = compute_norms_cat_cont(X, Z, candidates$norms$cat, weights * res, n, numLevels, candidates$variables$catcont, numCores)
   }
 
   return(candidates)

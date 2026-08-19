@@ -3,7 +3,7 @@ export(glinternet, glinternet.cv)
 importFrom(utils,head,tail,packageDescription)
 
 importFrom("graphics", "abline", "axis", "plot", "segments","lines")
-importFrom("stats", "lm", "predict", "sd")
+importFrom("stats", "lm", "plogis", "predict", "qlogis", "sd")
 
 S3method("print", "glinternet")
 S3method("print", "glinternet.cv")

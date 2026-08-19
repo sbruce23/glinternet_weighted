@@ -16,7 +16,7 @@
 glinternet(X, Y, numLevels, lambda = NULL, nLambda = 50, lambdaMinRatio = 0.01,
  interactionCandidates=NULL, interactionPairs=NULL, screenLimit = NULL, numToFind = NULL,
 family = c("gaussian","binomial"), tol = 1e-05, maxIter=5000, verbose=FALSE,
-numCores = 1)
+numCores = 1, weights = NULL)
 }
 
 \arguments{
@@ -48,7 +48,9 @@ numCores = 1)
     search space to \code{screenLimit} x nvars by only considering
     interactions with the best \code{screenLimit} candidate main effects
     at each point along the regularization path. Set this accordingly for
-    large problems or if there are memory limitations.}
+    large problems or if there are memory limitations. This is a heuristic
+    restriction of the interaction universe; KKT checks apply to retained
+    candidates, so a screened fit need not equal the unrestricted fit.}
   \item{numToFind}{Stops the program after \code{numToFind} interaction
     pairs are found. Default is null - fit all values of \code{lambda}.}
   \item{family}{A character string describing the target variable:
@@ -58,14 +60,34 @@ numCores = 1)
   \item{verbose}{Prints progress. False by default.}
   \item{numCores}{Number of threads to run. For this to work, the
     package must be installed with OpenMP enabled. Default is 1 thread.}
+  \item{weights}{Optional nonnegative case/frequency weights, one per
+    observation. Weights must be finite and have positive total. They are
+    normalized internally to sum to the number of observations.}
 }
 \details{
   The sequence of models implied by \code{lambda} is fit by FISTA (fast
   iterative soft thresholding) with adaptive step size and adaptive
   momentum restart. The continuous features are standardized to have
-  unit norm and mean zero before computing the \code{lambda} sequence
+  weighted unit norm and weighted mean zero before computing the \code{lambda} sequence
   and fitting. The returned coefficients are unstandardized. Categorical
   variables are not standardized.
+
+  The supplied values are case/frequency weights, not analytic inverse-variance
+  weights. If \eqn{w_i} is the supplied weight, the implementation uses
+  \eqn{v_i = n w_i / \sum_j w_j} and minimizes
+  \eqn{n^{-1}\sum_i v_i L(y_i,\eta_i) + \lambda\sum_g ||\beta_g||_2}.
+  Here \eqn{L=(y-\eta)^2/2} for Gaussian data and
+  \eqn{L=\log(1+\exp(\eta))-y\eta} for binomial data; the existing
+  hierarchical group penalty is unchanged. Zero-weight observations are
+  allowed and make no contribution to fitting, screening, KKT checks, or
+  preprocessing moments. Multiplying every weight by the same positive scalar
+  leaves the fitted path unchanged. Omitting weights, or supplying all-one
+  weights, retains the original unweighted objective and lambda scale.
+  Binomial fits require both response classes to have positive total weight.
+
+  When \code{screenLimit} is used, it heuristically restricts the interaction
+  candidate universe. Consequently, the result can differ from an unrestricted
+  fit; KKT and optimum guarantees apply within the retained candidates only.
 }
 \value{
   An object of class \code{glinternet} with the components
@@ -85,6 +107,7 @@ numCores = 1)
     \code{activeSet}. The first component is the intercept. Subsequent entries correspond to the variables in activeSet. For example, if the first variable in activeSet is a 3-level categorical variable, then components 2-4 of betahat are the coefficients for this variable.}
   \item{numLevels}{The number of levels for each variable.}
   \item{family}{The target variable type.}
+  \item{weights}{The internally normalized observation weights.}
 }
 \references{
 Michael Lim and Trevor Hastie (2013)\emph{Learning interactions via hierarchical group-lasso

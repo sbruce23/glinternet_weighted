@@ -7,7 +7,7 @@
 glinternet.cv(X, Y, numLevels, nFolds = 10, lambda=NULL, nLambda=50,
 lambdaMinRatio=0.01, interactionCandidates=NULL, interactionPairs=NULL,
 screenLimit=NULL, family=c("gaussian", "binomial"), tol=1e-5, maxIter=5000,
-verbose=FALSE, numCores=1)
+verbose=FALSE, numCores=1, weights=NULL, foldid=NULL)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -27,13 +27,27 @@ verbose=FALSE, numCores=1)
   \item{maxIter}{\code{maxIter} as in \code{glinternet}.}
   \item{verbose}{\code{verbose} as in \code{glinternet}.}
   \item{numCores}{\code{numCores} as in \code{glinternet}.}
+  \item{weights}{Optional nonnegative case/frequency weights as in
+    \code{glinternet}.}
+  \item{foldid}{Optional vector of integer fold labels, one per observation.
+    At least two nonempty folds are required and each fold must have positive
+    total validation weight.}
 }
 \details{The \code{lambda} sequence is computed using all the
   data. \code{nFolds} models are fit, each time with one of the folds
-  omitted. The error is accumulated, and the average error and standard deviation over the
-  folds is computed. The \code{lambda} value that minimizes the average
+  omitted. Each training fit renormalizes its own training weights. Validation
+  losses are weighted by observation weight and combined by fold weight mass,
+  so \code{cvErr} is the observation-weighted loss across all out-of-fold
+  predictions. A weighted standard error across fold means is also computed;
+  with equal fold masses this reduces to the fold-loss standard deviation
+  divided by the square root of the number of folds. The one-standard-error
+  choice is the largest lambda with error no greater than the minimum error plus
+  the standard error at the minimum. The \code{lambda} value that minimizes the average
   error is returned, and a model with this \code{lambda} is fit to the
-  full data set.}
+  full data set. If \code{screenLimit} is set, its heuristic retained-candidate
+  semantics are the same as in \code{glinternet}. For binomial models, use
+  suitably stratified folds so both response classes have positive total
+  training weight in every fold.}
 \value{
   An object of class \code{glinternet.cv} with the components
   \item{call}{The user function call.}
@@ -50,15 +64,19 @@ verbose=FALSE, numCores=1)
   \item{lambdaHat}{The value of \code{lambda} that minimizes the cv
     error curve.}
   \item{lambdaHat1Std}{The largest value of \code{lambda} that produces
-    a cv error that is within 1 standard deviation of the minimum cv
+    a cv error that is within 1 standard error of the minimum cv
     error. This will always be at least as large as \code{lambdaHat}.}
   \item{cvErr}{The vector of cross validation errors. Same length as
     \code{lambda}.}
-  \item{cvErrStd}{Standard deviation for cv errors across the
-    \code{nFolds} folds.}
+  \item{cvErrStd}{Weighted standard error for cross-validation errors across
+    the \code{nFolds} fold means.}
   \item{family}{The response type.}
   \item{numLevels}{Input number of levels for each variable.}
   \item{nFolds}{The number of folds used.}
+  \item{foldid}{The fold assignment used.}
+  \item{foldLoss}{Matrix of per-fold mean validation losses.}
+  \item{foldWeight}{Total raw validation weight in each fold.}
+  \item{weights}{The raw observation weights supplied to cross-validation.}
 }
 
 \author{

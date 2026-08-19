@@ -8,7 +8,11 @@
 
 static const double eps = 1e-12;
 
-void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, int *nRows, int *nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict result){
+static double softplus(double x){
+  return fmax(x, 0.0) + log1p(exp(-fabs(x)));
+}
+
+void x_times_beta(int *restrict x, double *restrict z, const double *restrict weights, double *restrict beta, int *nRows, int *nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict result){
   int n = *nRows;
   int pCat=nVars[0], pCont=nVars[1], pCatCat=2*nVars[2], pContCont=2*nVars[3], pCatCont=2*nVars[4];
   int i, p, nLevels, allzero, offset = 0;
@@ -107,12 +111,13 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
       for (i=0; i<n; i++){
 	result[i] += (wOffsetPtr[i]*beta[offset] + zOffsetPtr[i]*beta[offset+1]) / factor;
 	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += product[i];
-	norm += product[i]*product[i];
+	mean += weights[i]*product[i];
+	norm += weights[i]*product[i]*product[i];
       }
-      if (norm > 0){
-	mean /= n;
-	norm = sqrt(3 * (norm-n*pow(mean, 2)));
+      mean /= n;
+      norm -= n*pow(mean, 2);
+      if (norm > 1e-30){
+	norm = sqrt(3 * norm);
 	for (i=0; i<n; i++){
 	  result[i] += (product[i]-mean) * beta[offset+2] / norm;
 	}
@@ -150,33 +155,33 @@ void x_times_beta(int *restrict x, double *restrict z, double *restrict beta, in
   }
 }
 
-double compute_loglik(const double *restrict y, const double *restrict linear, const double *restrict intercept, const int *restrict nRows, const int *restrict family){
+double compute_loglik(const double *restrict y, const double *restrict weights, const double *restrict linear, const double *restrict intercept, const int *restrict nRows, const int *restrict family){
   double result = 0.0, mu = *intercept;
   int i, n = *nRows;
   if (*family == 0){
     for (i=0; i<n; i++){
-      result += pow(y[i]-mu-linear[i], 2);
+      result += weights[i]*pow(y[i]-mu-linear[i], 2);
     }
     result /= (2*n);
   }
   else {
     for (i=0; i<n; i++){
-      result += -y[i]*(mu+linear[i]) + log(1+exp(mu+linear[i]));
+      result += weights[i]*(-y[i]*(mu+linear[i]) + softplus(mu+linear[i]));
     }
     result /= n;
   }
   return result;
 }
 
-void compute_objective(const double *restrict y, const double *restrict res, const double *restrict linear, const double *restrict intercept, const double *restrict beta, const int *restrict nRows, const int *restrict numGroups, const int *restrict groupSizes, const double *restrict lambda, double *restrict objValue, const int *restrict family){
+void compute_objective(const double *restrict y, const double *restrict weights, const double *restrict res, const double *restrict linear, const double *restrict intercept, const double *restrict beta, const int *restrict nRows, const int *restrict numGroups, const int *restrict groupSizes, const double *restrict lambda, double *restrict objValue, const int *restrict family){
   int i, j, size, n = *nRows, numgroups = *numGroups, offset = 0;
   double loglik = 0.0, penalty = 0.0, mu = *intercept, temp;
   if (*family == 0){
-    for (i=0; i<n; i++) loglik += res[i]*res[i];
+    for (i=0; i<n; i++) loglik += weights[i]*res[i]*res[i];
     loglik /= (2*n);
   }
   else {
-    for (i=0; i<n; i++) loglik += -y[i]*(mu+linear[i]) + log(1+exp(mu+linear[i]));
+    for (i=0; i<n; i++) loglik += weights[i]*(-y[i]*(mu+linear[i]) + softplus(mu+linear[i]));
     loglik /= n;
   }
   for (i=0; i<numgroups; i++){
@@ -191,7 +196,7 @@ void compute_objective(const double *restrict y, const double *restrict res, con
   *objValue = loglik + penalty*(*lambda);
 }
 
-void compute_gradient(int *restrict x, double *restrict z, double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict gradient){
+void compute_gradient(int *restrict x, double *restrict z, double *restrict r, const double *restrict weights, int *restrict nRows, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict gradient){
   int n = *nRows;
   int pCat=nVars[0], pCont=nVars[1], pCatCat=2*nVars[2], pContCont=2*nVars[3], pCatCont=2*nVars[4];
   int i, p, offset = 0;
@@ -258,12 +263,13 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, i
       mean = norm = 0.0;
       for (i=0; i<n; i++){
 	product[i] = wOffsetPtr[i] * zOffsetPtr[i];
-	mean += product[i];
-	norm += product[i]*product[i];
+	mean += weights[i]*product[i];
+	norm += weights[i]*product[i]*product[i];
       }
-      if (norm > 0){
-	mean /= n;
-	norm = sqrt(3 * (norm-n*pow(mean, 2)));
+      mean /= n;
+      norm -= n*pow(mean, 2);
+      if (norm > 1e-30){
+	norm = sqrt(3 * norm);
 	for (i=0; i<n; i++){
 	  gradient[offset + 2] += (product[i]-mean) * r[i];
 	}
@@ -356,15 +362,16 @@ void compute_update(const double *restrict beta, double *restrict betaUpdated, c
   }
 }
 
-void optimize_step(int *restrict x, double *restrict z, const double *restrict y, const double *restrict residual, double *restrict linear, int *restrict nRows, int *restrict numGroups, int *restrict groupSizes, int *restrict gradientLength, const double *restrict intercept, double *restrict beta, double *restrict betaUpdated, const double *restrict gradient, double *restrict stepsize, const double *restrict lambda, const double *restrict alpha, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, const int *restrict family){
+void optimize_step(int *restrict x, double *restrict z, const double *restrict y, const double *restrict weights, const double *restrict residual, double *restrict linear, int *restrict nRows, int *restrict numGroups, int *restrict groupSizes, int *restrict gradientLength, const double *restrict intercept, double *restrict beta, double *restrict betaUpdated, const double *restrict gradient, double *restrict stepsize, const double *restrict lambda, const double *restrict alpha, int *restrict nVars, int *restrict numLevels, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, const int *restrict family){
   int i, n = *nRows, len = *gradientLength;
   double step = *stepsize;
   double loglik, loglikUpdated;
-  loglik = compute_loglik(y, linear, intercept, nRows, family);
+  loglik = compute_loglik(y, weights, linear, intercept, nRows, family);
   double *restrict delta = malloc(len * sizeof *delta);
   double gradientTimesDelta, deltaTimesDelta;
   double factor = *alpha;
   double mu = 0.0;
+  int backtrack = 0;
   while (1){
     gradientTimesDelta = 0.0;
     deltaTimesDelta = 0.0;
@@ -376,17 +383,22 @@ void optimize_step(int *restrict x, double *restrict z, const double *restrict y
     }
     memset(linear, 0, n * sizeof *linear);
     if (*family == 0){/* gaussian case */
-      x_times_beta(x, z, delta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
-      loglikUpdated = compute_loglik(residual, linear, &mu, nRows, family); /* residual already had intercept subtracted from it */
+      x_times_beta(x, z, weights, delta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+      loglikUpdated = compute_loglik(residual, weights, linear, &mu, nRows, family); /* residual already had intercept subtracted from it */
     }
     else {/* binomial case */
-      x_times_beta(x, z, betaUpdated, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
-      loglikUpdated = compute_loglik(y, linear, intercept, nRows, family);
+      x_times_beta(x, z, weights, betaUpdated, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+      loglikUpdated = compute_loglik(y, weights, linear, intercept, nRows, family);
     }
     if (loglikUpdated <= loglik + gradientTimesDelta + deltaTimesDelta/(2*step) + eps) {
       break;
     }
     step *= factor;
+    ++backtrack;
+    if (backtrack >= 100 || !R_FINITE(step) || step <= 0.0){
+      free(delta);
+      error("FISTA backtracking failed to find a finite descent step");
+    }
   }
   *stepsize = step;
   free(delta);
@@ -428,13 +440,13 @@ double update_theta(const double *restrict beta, const double *restrict intermed
   return value > 0.0 ? 1.0 : theta;
 }
 
-void update_intercept(const double *restrict y, const int *restrict nRows, const double *restrict linear, double *restrict intercept, double *restrict residual, const int *restrict family){
+void update_intercept(const double *restrict y, const double *restrict weights, const int *restrict nRows, const double *restrict linear, double *restrict intercept, double *restrict residual, const int *restrict family, const double *restrict tol){
   int i, n = *nRows;
   double residualMean = 0.0, mu = *intercept;
   if (*family == 0){
     for (i=0; i<n; i++){
       residual[i] = y[i] - mu - linear[i];
-      residualMean += residual[i];
+      residualMean += weights[i]*residual[i];
     }
     residualMean /= n;
     *intercept += residualMean;
@@ -453,24 +465,27 @@ void update_intercept(const double *restrict y, const int *restrict nRows, const
     for (i=0; i<n; i++){
       exponent[i] = exp(-linear[i]);
       temp[i] = expMu * exponent[i];
-      sumY += y[i];
+      sumY += weights[i]*y[i];
       sum = mu + linear[i];
-      f += y[i] - (sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i])));
+      f += weights[i]*(y[i] - (sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i]))));
     }
     int iter = 0;
-    while (iter<1000 && fabs(f)>1e-2){
+    double interceptTol = fmax(DBL_EPSILON, fmin(fabs(*tol), 1e-10));
+    while (iter<1000 && fabs(f)/n>interceptTol){
       fPrime = 0.0;
       for (i=0; i<n; i++){
 	sum = mu + linear[i];
-	fPrime -= (sum > xmax || sum < xmin) ? 0.0 : temp[i]/pow(1+temp[i], 2);
+	fPrime -= weights[i]*((sum > xmax || sum < xmin) ? 0.0 : temp[i]/pow(1+temp[i], 2));
       }
+      if (!R_FINITE(fPrime) || fabs(fPrime) < DBL_EPSILON) break;
       mu -= f/fPrime;
+      if (!R_FINITE(mu)) break;
       expMu = exp(-mu);
       f = sumY;
       for (i=0; i<n; i++){
 	temp[i] = expMu * exponent[i];
 	sum = mu + linear[i];
-	f -= sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i]));
+	f -= weights[i]*(sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i])));
       }
       ++iter;
     }
@@ -491,10 +506,11 @@ double compute_stepsize(const double *restrict gradient, const double *restrict 
     normBeta += (beta[i]-betaOld[i])*(beta[i]-betaOld[i]);
     normGradient += (gradient[i]-gradientOld[i])*(gradient[i]-gradientOld[i]);
   }
-  return sqrt(normBeta/normGradient);
+  double step = sqrt(normBeta/normGradient);
+  return (R_FINITE(step) && step > 0.0) ? step : 1.0;
 }
 
-void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family, int *restrict verbose){
+void gl_solver(int *restrict x, double *restrict z, double *restrict y, double *restrict weights, int *restrict nRows, double *restrict intercept, double *restrict beta, double *restrict residual, double *restrict linear, int *restrict numLevels, int *restrict nVars, int *restrict catIndices, int *restrict contIndices, int *restrict catcatIndices, int *restrict contcontIndices, int *restrict catcontIndices, double *restrict lambda, double *restrict tol, double *restrict alpha, int *restrict maxIter, int *restrict convergedFlag, double *restrict objValue, double *restrict steps, int *restrict family, int *restrict verbose){
   /* initialize required variables */
   int i, gradientLength, iter, converged, n = *nRows;
   int numGroups = nVars[0] + nVars[1] + nVars[2] + nVars[3] + nVars[4];
@@ -508,9 +524,10 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
   memcpy(intermediate, beta, gradientLength * sizeof *beta);
   double *restrict betaOld = malloc(gradientLength * sizeof *betaOld);
   double *restrict gradientOld = malloc(gradientLength * sizeof *gradientOld);
+  double *restrict weightedResidual = malloc(n * sizeof *weightedResidual);
   /* compute residual from initialized beta */
-  x_times_beta(x, z, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
-  update_intercept(y, nRows, linear, intercept, residual, family);
+  x_times_beta(x, z, weights, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+  update_intercept(y, weights, nRows, linear, intercept, residual, family, tol);
   /* start accelerated FISTA */
   iter = 0;
   theta = 1.0;
@@ -519,7 +536,8 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
     /* compute gradient */
     memcpy(gradientOld, gradient, gradientLength * sizeof *gradient);
     memset(gradient, 0, gradientLength * sizeof *gradient);
-    compute_gradient(x, z, residual, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, gradient);
+    for (i=0; i<n; i++) weightedResidual[i] = weights[i]*residual[i];
+    compute_gradient(x, z, weightedResidual, weights, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, gradient);
     /* check convergence */
     converged = check_convergence(beta, gradient, groupSizes, &numGroups, lambda, tol);
     if (converged){
@@ -529,7 +547,7 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
     /* compute intermediate update and stepsize */
     memcpy(intermediateOld, intermediate, gradientLength * sizeof *intermediate);
     stepsize = iter > 0 ? compute_stepsize(gradient, gradientOld, beta, betaOld, gradientLength) : 1.0;
-    optimize_step(x, z, y, residual, linear, nRows, &numGroups, groupSizes, &gradientLength, intercept, beta, intermediate, gradient, &stepsize, lambda, alpha, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, family);
+    optimize_step(x, z, y, weights, residual, linear, nRows, &numGroups, groupSizes, &gradientLength, intercept, beta, intermediate, gradient, &stepsize, lambda, alpha, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, family);
     /* check if restart required  and update theta*/
     thetaOld = update_theta(beta, intermediate, intermediateOld, gradientLength, theta);
     /* update momentum */
@@ -542,14 +560,14 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
     }
     /* update residual and mu */
     memset(linear, 0, n * sizeof *linear);
-    x_times_beta(x, z, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
-    update_intercept(y, nRows, linear, intercept, residual, family);
+    x_times_beta(x, z, weights, beta, nRows, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, linear);
+    update_intercept(y, weights, nRows, linear, intercept, residual, family, tol);
     /* update iteration count */
     //compute_objective(y, residual, linear, intercept, beta, nRows, &numGroups, groupSizes, lambda, objValue+iter, family);
     steps[iter] = stepsize;
     ++iter;
   }
-  compute_objective(y, residual, linear, intercept, beta, nRows, &numGroups, groupSizes, lambda, objValue, family);
+  compute_objective(y, weights, residual, linear, intercept, beta, nRows, &numGroups, groupSizes, lambda, objValue, family);
   if (*verbose) {
     Rprintf("Convergence in %d iters, obj=%.8f\n", iter, *objValue);
   }
@@ -559,12 +577,14 @@ void gl_solver(int *restrict x, double *restrict z, double *restrict y, int *res
   free(intermediateOld);
   free(betaOld);
   free(gradientOld);
+  free(weightedResidual);
 }
 
-SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_family, SEXP R_verbose){
+SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_weights, SEXP R_nRows, SEXP R_intercept, SEXP R_beta, SEXP R_numLevels, SEXP R_nVars, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_lambda, SEXP R_tol, SEXP R_alpha, SEXP R_maxIter, SEXP R_family, SEXP R_verbose){
   PROTECT(R_x = coerceVector(R_x, INTSXP));
   PROTECT(R_z = coerceVector(R_z, REALSXP));
   PROTECT(R_y = coerceVector(R_y, REALSXP));
+  PROTECT(R_weights = coerceVector(R_weights, REALSXP));
   PROTECT(R_nRows = coerceVector(R_nRows, INTSXP));
   PROTECT(R_intercept = coerceVector(R_intercept, REALSXP));
   SEXP R_interceptCopy = PROTECT(duplicate(R_intercept));
@@ -596,6 +616,7 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   int *restrict x = INTEGER(R_x);
   double *restrict z = REAL(R_z);
   double *restrict y = REAL(R_y);
+  double *restrict weights = REAL(R_weights);
   int *restrict nRows = INTEGER(R_nRows);
   double *restrict intercept = REAL(R_interceptCopy);
   double *restrict beta = REAL(R_betaCopy);
@@ -617,7 +638,7 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   double *restrict steps = REAL(R_steps);
   int *restrict family = INTEGER(R_family);
   int *restrict verbose = INTEGER(R_verbose);
-  gl_solver(x, z, y, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);
+  gl_solver(x, z, y, weights, nRows, intercept, beta, residual, linear, numLevels, nVars, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, lambda, tol, alpha, maxIter, convergedFlag, objValue, steps, family, verbose);
   SEXP result = PROTECT(allocVector(VECSXP, 4));
   SET_VECTOR_ELT(result, 0, R_interceptCopy);
   SET_VECTOR_ELT(result, 1, R_betaCopy);
@@ -628,6 +649,6 @@ SEXP R_gl_solver(SEXP R_x, SEXP R_z, SEXP R_y, SEXP R_nRows, SEXP R_intercept, S
   int i;
   for (i=0; i<4; i++) SET_STRING_ELT(sNames, i, mkChar(names[i]));
   setAttrib(result, R_NamesSymbol, sNames);
-  UNPROTECT(28);
+  UNPROTECT(29);
   return result;
 }

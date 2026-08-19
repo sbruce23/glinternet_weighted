@@ -2,8 +2,8 @@ Package: glinternet
 Type: Package
 Title: Learning Interactions via Hierarchical Group-Lasso
         Regularization
-Version: 1.0.13
-Date: 2026-07-18
+Version: 1.0.14
+Date: 2026-08-19
 Authors@R: c(person(given = "Michael", family = "Lim",
                     role = c("aut", "cre"),
                     email = "michael626@gmail.com"),
@@ -11,9 +11,21 @@ Authors@R: c(person(given = "Michael", family = "Lim",
                     role = "aut"))
 Depends:
 Suggests:
-Description: Group-Lasso INTERaction-NET. Fits linear pairwise-interaction models that satisfy strong hierarchy: if an interaction coefficient is estimated to be nonzero, then its two associated main effects also have nonzero estimated coefficients. Accommodates categorical variables (factors) with arbitrary numbers of levels, continuous variables, and combinations thereof. Implements the machinery described in the paper "Learning interactions via hierarchical group-lasso regularization" (JCGS 2015, Volume 24, Issue 3). Michael Lim & Trevor Hastie (2015) <DOI:10.1080/10618600.2014.938812>.
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Description: Group-Lasso INTERaction-NET. Fits weighted or unweighted linear
+    pairwise-interaction models that satisfy strong hierarchy: if an interaction
+    coefficient is estimated to be nonzero, then its two associated main effects
+    also have nonzero estimated coefficients. Accommodates categorical variables
+    (factors) with arbitrary numbers of levels, continuous variables, and
+    combinations thereof. Implements the machinery described in the paper
+    "Learning interactions via hierarchical group-lasso regularization" (JCGS
+    2015, Volume 24, Issue 3). Michael Lim & Trevor Hastie (2015)
+    <doi:10.1080/10618600.2014.938812>.
 License: GPL-2
-URL: https://hastie.su.domains/Papers/glinternet_jcgs.pdf
+URL: https://github.com/sbruce23/glinternet_weighted,
+    https://hastie.su.domains/Papers/glinternet_jcgs.pdf
+BugReports: https://github.com/sbruce23/glinternet_weighted/issues
 NeedsCompilation: yes
 Packaged: 2026-07-18 15:54:22 UTC; mike
 Author: Michael Lim [aut, cre],
