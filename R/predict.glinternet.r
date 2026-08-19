@@ -33,10 +33,14 @@ predict.glinternet = function(object, X, type=c("response", "link"), lambda=NULL
 
   #if lambda is null, predict on all the lambdas
   if (is.null(lambda)){  
-    return(sapply(1:length(object$betahat), function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family)))
+    result = sapply(seq_along(object$betahat), function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family))
+    if (is.null(dim(result))) result = matrix(result, ncol=length(object$betahat))
+    return(result)
   }
   #otherwise, match the lambda sequence with user's lambda
   idx = match(lambda, object$lambda, 0)
   if (any(idx==0)) stop("Input lambda sequence not used in model fitting.")
-  return(sapply(idx, function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family)))
+  result = sapply(idx, function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family))
+  if (is.null(dim(result))) result = matrix(result, ncol=length(idx))
+  return(result)
 }

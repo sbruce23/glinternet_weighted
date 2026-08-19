@@ -214,3 +214,48 @@ test_that("native nonconvergence is exposed and cannot fail silently", {
   expect_false(fit$converged[length(fit$converged)])
   expect_equal(fit$iterations[length(fit$iterations)],1L)
 })
+
+test_that("zero-weight DBL_MAX predictors cannot contaminate solver state", {
+  set.seed(991)
+  X <- cbind(rnorm(40),rnorm(40))
+  y <- 1+X[,1]+X[,1]*X[,2]+rnorm(40)
+  w <- c(0,rep(1,39))
+  extreme <- X
+  extreme[1,] <- .Machine$double.xmax
+  reference <- X
+  reference[1,] <- 0
+  a <- glinternet(extreme,y,c(1,1),lambda=c(.05,.01),weights=w,maxIter=6000)
+  b <- glinternet(reference,y,c(1,1),lambda=c(.05,.01),weights=w,maxIter=6000)
+  expect_true(all(is.finite(c(a$objValue,a$fitted[-1,]))))
+  expect_equal(a$fitted[-1,],b$fitted[-1,],tolerance=1e-8)
+  expect_equal(a$objValue,b$objValue,tolerance=1e-8)
+  expect_equal(predict(b,reference,"response"),b$fitted,tolerance=1e-8)
+})
+
+test_that("every user-supplied lambda including length one is optimized", {
+  set.seed(612)
+  n <- 50
+  x <- rnorm(n)
+  y <- .4+1.3*x+rnorm(n,sd=.3)
+  w <- runif(n,.3,2)
+  v <- glinternet:::validate_weights(w,n)
+  z <- glinternet:::standardize(x,v)
+  ybar <- glinternet:::weighted_mean(y,v)
+  score <- sum(z*v*(y-ybar))/n
+  lambda <- abs(score)/3
+  beta <- n*sign(score)*max(abs(score)-lambda,0)
+  expected <- ybar+z*beta
+  fit <- glinternet(matrix(x,ncol=1),y,1,lambda=lambda,weights=w,
+                    tol=1e-9,maxIter=6000)
+  expect_equal(length(fit$lambda),1)
+  expect_equal(fit$lambda,lambda,tolerance=0)
+  expect_equal(drop(fit$fitted),expected,tolerance=2e-6)
+
+  yb <- rbinom(n,1,plogis(-.2+x))
+  one <- glinternet(matrix(x,ncol=1),yb,1,lambda=.01,weights=w,
+                    family="binomial",tol=1e-8,maxIter=6000)
+  path <- glinternet(matrix(x,ncol=1),yb,1,lambda=c(1,.01),weights=w,
+                     family="binomial",tol=1e-8,maxIter=6000)
+  expect_equal(length(one$lambda),1)
+  expect_equal(drop(one$fitted),path$fitted[,2],tolerance=2e-6)
+})

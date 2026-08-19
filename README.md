@@ -49,17 +49,17 @@ moments, KKT checks, or validation loss. Internally, weights are normalized to
 sum to the number of observations, so multiplying all supplied weights by the
 same positive constant does not change the fitted path.
 
-For normalized weights \(\widetilde w_i = n w_i / \sum_i w_i\), the fitted
+For normalized weights $\widetilde w_i = n w_i / \sum_i w_i$, the fitted
 Gaussian path minimizes
 
-\[
+$$
   \frac{1}{2n}\sum_{i=1}^n \widetilde w_i
   (y_i - \eta_i)^2 + \lambda \sum_g \lVert \beta_g \rVert_2,
-\]
+$$
 
 and the binomial path replaces squared error with binomial negative
 log-likelihood,
-\(L(y_i,\eta_i)=\log(1+\exp(\eta_i))-y_i\eta_i\), evaluated numerically
+$L(y_i,\eta_i)=\log(1+\exp(\eta_i))-y_i\eta_i$, evaluated numerically
 stably. The groups and overlapping parameterization are those of Lim and Hastie
 and enforce strong hierarchy. Continuous columns and continuous-continuous
 products are centered and scaled using these normalized weights.
@@ -83,16 +83,16 @@ cvfit$lambdaHat1Std
 ```
 
 Each training fold normalizes its own training weights. Within validation fold
-\(k\), the mean loss is weighted by the raw validation weights. Fold losses are
+$k$, the mean loss is weighted by the raw validation weights. Fold losses are
 then combined in proportion to their validation weight masses, which is the
 weighted loss across all out-of-fold predictions. Every validation fold must
 have positive weight mass.
 
 `cvErrStd` is a standard error across fold means. If
-\(a_k=W_k/\sum_j W_j\), the implementation uses effective fold count
-\(K_{eff}=1/\sum_k a_k^2\), weighted variance
-\(s^2=\sum_k a_k(L_k-\bar L)^2/(1-\sum_k a_k^2)\), and
-\(\operatorname{SE}=\sqrt{s^2/K_{eff}}\). With equal fold masses this is
+$a_k=W_k/\sum_j W_j$, the implementation uses effective fold count
+$K_{eff}=1/\sum_k a_k^2$, weighted variance
+$s^2=\sum_k a_k(L_k-\bar L)^2/(1-\sum_k a_k^2)$, and
+$\operatorname{SE}=\sqrt{s^2/K_{eff}}$. With equal fold masses this is
 `sd(fold_loss) / sqrt(nFolds)`. The one-standard-error choice is the largest
 lambda whose loss is no more than the minimum loss plus the standard error at
 the minimum. Supplying `foldid` makes the split reproducible and enables direct

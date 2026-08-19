@@ -16,8 +16,11 @@ weighted_mean = function(x, weights) sum(weights * x) / sum(weights)
 initial_intercept = function(Y, weights, family) {
   mu = weighted_mean(Y, weights)
   if (family == "gaussian") return(mu)
-  if (mu <= 0 || mu >= 1) {
+  positiveMass = sum(weights[Y == 1])
+  negativeMass = sum(weights[Y == 0])
+  if (!is.finite(positiveMass) || !is.finite(negativeMass) ||
+      positiveMass <= 0 || negativeMass <= 0) {
     stop("weighted binomial response must contain positive weight in both outcome classes")
   }
-  qlogis(mu)
+  log(positiveMass) - log(negativeMass)
 }

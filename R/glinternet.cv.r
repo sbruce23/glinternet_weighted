@@ -74,7 +74,12 @@ glinternet.cv = function(X, Y, numLevels, nFolds=10, lambda=NULL, nLambda=50, la
   foldShare = foldMass / sum(foldMass)
   cv = drop(crossprod(foldShare, loss))
   effectiveFolds = 1 / sum(foldShare^2)
-  foldVariance = colSums(foldShare * sweep(loss, 2, cv)^2) / (1-sum(foldShare^2))
+  varianceDenominator = sum(foldShare * (1-foldShare))
+  foldVariance = if (varianceDenominator > 0) {
+    colSums(foldShare * sweep(loss, 2, cv)^2) / varianceDenominator
+  } else {
+    rep(0, nlambda)
+  }
   cvStd = sqrt(foldVariance / effectiveFolds)
   bestIndex1Std = which(cv <= min(cv)+cvStd[which.min(cv)])
   bestIndex = which.min(cv)

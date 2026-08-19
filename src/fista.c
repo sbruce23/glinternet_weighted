@@ -277,7 +277,8 @@ void compute_gradient(int *restrict x, double *restrict z, double *restrict r, c
       if (norm > 1e-30){
 	norm = sqrt(3 * norm);
 	for (i=0; i<n; i++){
-	  gradient[offset + 2] += (product[i]-mean) * r[i];
+	  if (weights[i] > 0.0)
+	    gradient[offset + 2] += (product[i]-mean) * r[i];
 	}
 	  gradient[offset + 2] /= norm;
       }
@@ -452,7 +453,7 @@ void update_intercept(const double *restrict y, const double *restrict weights, 
   if (*family == 0){
     for (i=0; i<n; i++){
       residual[i] = y[i] - mu - linear[i];
-      residualMean += weights[i]*residual[i];
+      if (weights[i] > 0.0) residualMean += weights[i]*residual[i];
     }
     residualMean /= n;
     *intercept += residualMean;
@@ -471,9 +472,10 @@ void update_intercept(const double *restrict y, const double *restrict weights, 
     for (i=0; i<n; i++){
       exponent[i] = exp(-linear[i]);
       temp[i] = expMu * exponent[i];
-      sumY += weights[i]*y[i];
+      if (weights[i] > 0.0) sumY += weights[i]*y[i];
       sum = mu + linear[i];
-      f += weights[i]*(y[i] - (sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i]))));
+      if (weights[i] > 0.0)
+        f += weights[i]*(y[i] - (sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i]))));
     }
     int iter = 0;
     double interceptTol = fmax(DBL_EPSILON, fmin(fabs(*tol), 1e-10));
@@ -481,7 +483,8 @@ void update_intercept(const double *restrict y, const double *restrict weights, 
       fPrime = 0.0;
       for (i=0; i<n; i++){
 	sum = mu + linear[i];
-	fPrime -= weights[i]*((sum > xmax || sum < xmin) ? 0.0 : temp[i]/pow(1+temp[i], 2));
+	if (weights[i] > 0.0)
+	  fPrime -= weights[i]*((sum > xmax || sum < xmin) ? 0.0 : temp[i]/pow(1+temp[i], 2));
       }
       if (!R_FINITE(fPrime) || fabs(fPrime) < DBL_EPSILON) break;
       mu -= f/fPrime;
@@ -491,7 +494,8 @@ void update_intercept(const double *restrict y, const double *restrict weights, 
       for (i=0; i<n; i++){
 	temp[i] = expMu * exponent[i];
 	sum = mu + linear[i];
-	f -= weights[i]*(sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i])));
+	if (weights[i] > 0.0)
+	  f -= weights[i]*(sum > xmax ? 1.0 : (sum < xmin ? 0.0 : 1/(1+temp[i])));
       }
       ++iter;
     }

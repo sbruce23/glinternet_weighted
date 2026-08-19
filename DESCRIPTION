@@ -9,7 +9,6 @@ Authors@R: c(person(given = "Michael", family = "Lim",
                     email = "michael626@gmail.com"),
              person(given = "Trevor", family = "Hastie",
                     role = "aut"))
-Depends:
 Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
@@ -27,9 +26,6 @@ URL: https://github.com/sbruce23/glinternet_weighted,
     https://hastie.su.domains/Papers/glinternet_jcgs.pdf
 BugReports: https://github.com/sbruce23/glinternet_weighted/issues
 NeedsCompilation: yes
-Packaged: 2026-07-18 15:54:22 UTC; mike
 Author: Michael Lim [aut, cre],
   Trevor Hastie [aut]
 Maintainer: Michael Lim <michael626@gmail.com>
-Repository: CRAN
-Date/Publication: 2026-07-18 17:00:13 UTC

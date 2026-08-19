@@ -30,7 +30,8 @@ numCores = 1, weights = NULL)
   \item{lambda}{A user supplied \code{lambda} sequence. Typical usage
     is to have the program compute its own \code{lambda} sequence based on
     \code{nLambda} and \code{lambdaMinRatio}. Supplying a value of
-    \code{lambda} overrides this.}
+    \code{lambda} overrides this. Every supplied value is fitted exactly,
+    including when a single value is supplied.}
   \item{nLambda}{The number of \code{lambda} values. Default is 50.}
   \item{lambdaMinRatio}{Smallest value for \code{lambda}, as a fraction of
     \code{lambdaMax}, the (data derived) entry value (i.e. the smallest
@@ -71,6 +72,10 @@ numCores = 1, weights = NULL)
   weighted unit norm and weighted mean zero before computing the \code{lambda} sequence
   and fitting. The returned coefficients are unstandardized. Categorical
   variables are not standardized.
+
+  A computed path supports \code{nLambda = 1}. If every candidate score is
+  zero, the computed lambda grid is zero and the intercept-only path is
+  returned. User-supplied lambda values must remain strictly positive.
 
   The supplied values are case/frequency weights, not analytic inverse-variance
   weights. If \eqn{w_i} is the supplied weight, the implementation uses
