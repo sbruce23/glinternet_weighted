@@ -39,7 +39,13 @@ check_kkt = function(X, Z, res, weights, n, pCat, pCont, numLevels, candidates, 
       extras = 1:nrow(violators[[nm]])
     }
     if (length(extras) > 0) {
-      activeSet[[nm]] = rbind(activeSet[[nm]], violators[[nm]][extras, ])
+      # Preserve a matrix when multiple rows are selected from a one-column
+      # main-effect group. Without drop=FALSE, R turns those rows into a vector;
+      # rbind then recycles/truncates it and can silently omit KKT violators.
+      activeSet[[nm]] = rbind(
+        activeSet[[nm]],
+        violators[[nm]][extras, , drop=FALSE]
+      )
       flag = 0
     }
   }
