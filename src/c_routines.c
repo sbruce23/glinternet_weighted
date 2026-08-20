@@ -8,7 +8,28 @@
 #include <R.h>
 #include <Rinternals.h>
 
-static const double eps = 0.0;
+static const double eps = 0.0; /* exact zero test retained for legacy sparsity */
+
+static void weighted_location_scale(const double *x, const double *weights, int n,
+                                    double *magnitude, double *meanScaled, double *normScaled){
+  int i;
+  *magnitude = 0.0;
+  for (i=0; i<n; i++) if (weights[i] > 0.0 && fabs(x[i]) > *magnitude) *magnitude = fabs(x[i]);
+  if (*magnitude == 0.0){
+    *magnitude = *normScaled = 1.0;
+    *meanScaled = 0.0;
+    return;
+  }
+  *meanScaled = 0.0;
+  for (i=0; i<n; i++) if (weights[i] > 0.0) *meanScaled += weights[i]*(x[i]/ *magnitude);
+  *meanScaled /= n;
+  *normScaled = 0.0;
+  for (i=0; i<n; i++) if (weights[i] > 0.0){
+    double centered = x[i]/ *magnitude - *meanScaled;
+    *normScaled += weights[i]*centered*centered;
+  }
+  *normScaled = (*normScaled > 1e-30) ? sqrt(*normScaled) : 1.0;
+}
 
 void retrieve_beta(const double *restrict beta, const int *restrict groupSizes, const int *restrict numGroups, int *restrict idx, int *restrict betaIdx){
   int i, p, offset = 0, numgroups = *numGroups, size;
@@ -173,9 +194,9 @@ SEXP R_initialize_beta(SEXP R_beta, SEXP R_betaOld, SEXP R_nVars, SEXP R_nVarsOl
   return R_beta;
 }
 
-void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows, const double *restrict beta, const int *restrict betaLen, const int *restrict nVars, const int *restrict numLevels, const int *restrict catIndices, const int *restrict contIndices, const int *restrict catcatIndices, const int *restrict contcontIndices, const int *restrict catcontIndices, double *restrict result){
+void rescale_beta(int *restrict x, double *restrict z, const double *restrict weights, const int *restrict nRows, const double *restrict beta, const int *restrict betaLen, const int *restrict nVars, const int *restrict numLevels, const int *restrict catIndices, const int *restrict contIndices, const int *restrict catcatIndices, const int *restrict contcontIndices, const int *restrict catcontIndices, double *restrict result){
   int i, p, size, n = *nRows, offset = 1;
-  double factor, mean, norm;
+  double factor, mean, norm, magnitude;
   double *restrict zOffsetPtr;
   int pCat = nVars[0], pCont = nVars[1], pCatCat = 2*nVars[2], pContCont = 2*nVars[3], pCatCont = 2*nVars[4];
   memcpy(result, beta, *betaLen * sizeof *beta);
@@ -193,16 +214,10 @@ void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows
   if (pCont > 0){
     for (p=0; p<pCont; p++){
       zOffsetPtr = z + (contIndices[p]-1)*n;
-      mean = 0.0;
-      norm = 0.0;
-      for (i=0; i<n; i++){
-	mean += zOffsetPtr[i];
-	norm += zOffsetPtr[i]*zOffsetPtr[i];
-      }
-      mean /= n;
-      norm = (fabs(norm) > 1e-30) ? sqrt(norm-n*pow(mean, 2)) : 1.0;
+      weighted_location_scale(zOffsetPtr, weights, n, &magnitude, &mean, &norm);
+      result[0] -= mean * result[offset] / norm;
+      result[offset] /= magnitude;
       result[offset] /= norm;
-      result[0] -= mean * result[offset];
       ++offset;
     }
   }
@@ -224,34 +239,36 @@ void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows
     for (p=0; p<pContCont; p+=2){
       wOffsetPtr = z + (contcontIndices[p]-1)*n;
       zOffsetPtr = z + (contcontIndices[p+1]-1)*n;
-      mean = norm = meanZ = normZ = 0.0;
-      for (i=0; i<n; i++){
-	mean += wOffsetPtr[i];
-	norm += wOffsetPtr[i]*wOffsetPtr[i];
-	meanZ += zOffsetPtr[i];
-	normZ += zOffsetPtr[i]*zOffsetPtr[i];
-      }
-      mean /= n;
-      meanZ /= n;
-      norm = (fabs(norm) > 1e-30) ? sqrt(norm - n*pow(mean, 2)) : 1.0;
-      normZ = (fabs(normZ) > 1e-30) ? sqrt(normZ - n*pow(meanZ, 2)) : 1.0;
-      result[offset] /= (factor * norm);
-      result[offset+1] /= (factor * normZ);
-      result[0] -= mean*result[offset] + meanZ*result[offset+1];
+      double magnitudeZ;
+      weighted_location_scale(wOffsetPtr, weights, n, &magnitude, &mean, &norm);
+      weighted_location_scale(zOffsetPtr, weights, n, &magnitudeZ, &meanZ, &normZ);
+      result[0] -= mean*result[offset]/(factor*norm) + meanZ*result[offset+1]/(factor*normZ);
+      result[offset] /= factor * norm;
+      result[offset] /= magnitude;
+      result[offset+1] /= factor * normZ;
+      result[offset+1] /= magnitudeZ;
       meanProduct = normProduct = 0.0;
       for (i=0; i<n; i++){
-	product[i] = (wOffsetPtr[i]-mean) * (zOffsetPtr[i]-meanZ) / (norm*normZ);
-	meanProduct += product[i];
-	normProduct += product[i]*product[i];
+	product[i] = (wOffsetPtr[i]/magnitude-mean) * (zOffsetPtr[i]/magnitudeZ-meanZ) / (norm*normZ);
+	if (weights[i] > 0.0){
+	  meanProduct += weights[i]*product[i];
+	  normProduct += weights[i]*product[i]*product[i];
+	}
       }
       meanProduct /= n;
-      normProduct = (fabs(normProduct) > 1e-30) ? sqrt(normProduct - n*pow(meanProduct, 2)) : 1.0;
+      normProduct -= n*pow(meanProduct, 2);
+      normProduct = (normProduct > 1e-30) ? sqrt(normProduct) : 1.0;
       result[offset+2] /= (factor * normProduct);
       result[0] -= meanProduct * result[offset+2];
-      result[offset+2] /= norm * normZ;
-      result[offset] -= meanZ * result[offset+2];
-      result[offset+1] -= mean * result[offset+2];
-      result[0] += mean * meanZ * result[offset+2];
+      {
+        double interactionScaled = result[offset+2];
+        result[0] += mean * meanZ * interactionScaled / (norm*normZ);
+        result[offset] -= meanZ * interactionScaled / (magnitude*norm*normZ);
+        result[offset+1] -= mean * interactionScaled / (magnitudeZ*norm*normZ);
+        result[offset+2] /= magnitude;
+        result[offset+2] /= magnitudeZ;
+        result[offset+2] /= norm * normZ;
+      }
       offset += 3;
     }
     free(product);
@@ -262,25 +279,21 @@ void rescale_beta(int *restrict x, double *restrict z, const int *restrict nRows
     for (p=0; p<pCatCont; p+=2){
       zOffsetPtr = z + (catcontIndices[p+1]-1)*n;
       size = numLevels[catcontIndices[p]-1];
-      mean = norm = 0.0;
-      for (i=0; i<n; i++){
-	mean += zOffsetPtr[i];
-	norm += zOffsetPtr[i]*zOffsetPtr[i];
-      }
-      mean /= n;
-      norm = (fabs(norm) > 1e-30) ? sqrt(norm - n*pow(mean, 2)) : 1.0;
+      weighted_location_scale(zOffsetPtr, weights, n, &magnitude, &mean, &norm);
       for (i=0; i<size; i++){
-	result[offset+size+i] /= (factor*norm);
-	result[offset+i] = result[offset+i]/factor1 - mean*result[offset+size+i];
+	double slopeScaled = result[offset+size+i] / (factor*norm);
+	result[offset+size+i] = slopeScaled / magnitude;
+	result[offset+i] = result[offset+i]/factor1 - mean*slopeScaled;
       }
       offset += 2*size;
     }
   }
 }
 
-SEXP R_rescale_beta(SEXP R_x, SEXP R_z, SEXP R_nRows, SEXP R_beta, SEXP R_betaLen, SEXP R_nVars, SEXP R_numLevels, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_result){
+SEXP R_rescale_beta(SEXP R_x, SEXP R_z, SEXP R_weights, SEXP R_nRows, SEXP R_beta, SEXP R_betaLen, SEXP R_nVars, SEXP R_numLevels, SEXP R_catIndices, SEXP R_contIndices, SEXP R_catcatIndices, SEXP R_contcontIndices, SEXP R_catcontIndices, SEXP R_result){
   PROTECT(R_x = coerceVector(R_x, INTSXP));
   PROTECT(R_z = coerceVector(R_z, REALSXP));
+  PROTECT(R_weights = coerceVector(R_weights, REALSXP));
   PROTECT(R_nRows = coerceVector(R_nRows, INTSXP));
   PROTECT(R_beta = coerceVector(R_beta, REALSXP));
   PROTECT(R_betaLen = coerceVector(R_betaLen, INTSXP));
@@ -294,6 +307,7 @@ SEXP R_rescale_beta(SEXP R_x, SEXP R_z, SEXP R_nRows, SEXP R_beta, SEXP R_betaLe
   PROTECT(R_result = coerceVector(R_result, REALSXP));
   int *restrict x = INTEGER(R_x);
   double *restrict z = REAL(R_z);
+  double *restrict weights = REAL(R_weights);
   int *restrict nRows = INTEGER(R_nRows);
   double *restrict beta = REAL(R_beta);
   int *restrict betaLen = INTEGER(R_betaLen);
@@ -305,8 +319,8 @@ SEXP R_rescale_beta(SEXP R_x, SEXP R_z, SEXP R_nRows, SEXP R_beta, SEXP R_betaLe
   int *restrict contcontIndices = INTEGER(R_contcontIndices);
   int *restrict catcontIndices = INTEGER(R_catcontIndices);
   double *restrict result = REAL(R_result);
-  rescale_beta(x, z, nRows, beta, betaLen, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, result);
-  UNPROTECT(13);
+  rescale_beta(x, z, weights, nRows, beta, betaLen, nVars, numLevels, catIndices, contIndices, catcatIndices, contcontIndices, catcontIndices, result);
+  UNPROTECT(14);
   return R_result;
 }
 
@@ -411,8 +425,8 @@ void compute_norms_cat(int *restrict x, double *restrict r, int *restrict nRows,
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, r, n, p, result) private(i, j, offset, len, temp)
+#endif
   for (j=0; j<p; j++){
     offset = j*n;
     len = numLevels[j];
@@ -456,8 +470,8 @@ void compute_norms_cat_cat(int *restrict x, double *restrict r, int *restrict nR
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, r, n, p, numLevels, xIndices, yIndices, result) private(i, j, xOffset, yOffset, len, xlevels, temp)
+#endif
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;  //R uses 1-based indexing
     yOffset = (yIndices[j] - 1)*n;
@@ -507,8 +521,8 @@ void compute_norms_cat_cont(int *restrict x, double *restrict z, double *restric
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, z, catNorms, r, n, p, numLevels, xIndices, zIndices, result) private(i, j, xOffset, zOffset, levels, temp)
+#endif
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;
     zOffset = (zIndices[j] - 1)*n;
@@ -554,7 +568,7 @@ SEXP R_compute_norms_cat_cont(SEXP R_x, SEXP R_z, SEXP R_catNorms, SEXP R_r, SEX
   return R_result;
 }
 
-void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, double *restrict r, int *restrict nRows, int *restrict nVars, int *restrict xIndices, int *restrict yIndices, int *restrict numCores, double *restrict result){
+void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, double *restrict r, double *restrict weights, int *restrict nRows, int *restrict nVars, int *restrict xIndices, int *restrict yIndices, int *restrict numCores, double *restrict result){
   int n = *nRows;
   int p = *nVars;
   int i, j, xOffset, yOffset;
@@ -563,8 +577,8 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
 #ifdef _OPENMP
   omp_set_dynamic(0);
   omp_set_num_threads(*numCores);
-#endif
 # pragma omp parallel for shared(x, contNorms, r, n, p, xIndices, yIndices, result) private(i, j, xOffset, yOffset, mean, norm, temp, product)
+#endif
   for (j=0; j<p; j++){
     xOffset = (xIndices[j] - 1)*n;
     yOffset = (yIndices[j] - 1)*n;
@@ -572,24 +586,28 @@ void compute_norms_cont_cont(double *restrict x, double *restrict contNorms, dou
     mean = norm = 0.0;
     for (i=0; i<n; i++){
       product[i] = x[xOffset+i]*x[yOffset+i];
-      mean += product[i];
-      norm += product[i]*product[i];
+      if (weights[i] > 0.0){
+        mean += weights[i]*product[i];
+        norm += weights[i]*product[i]*product[i];
+      }
     }
     mean /= n;
     temp = 0.0;
     for (i=0; i<n; i++){
-      temp += r[i]*(product[i]-mean);
+      if (weights[i] > 0.0) temp += r[i]*(product[i]-mean);
     }
-    result[j] += pow(n, 2)*(pow(contNorms[xIndices[j]-1], 2) + pow(contNorms[yIndices[j]-1], 2)) + (norm > 0 ? pow(temp, 2)/(norm-n*pow(mean, 2)) : 0);
+    norm -= n*pow(mean, 2);
+    result[j] += pow(n, 2)*(pow(contNorms[xIndices[j]-1], 2) + pow(contNorms[yIndices[j]-1], 2)) + (norm > 1e-30 ? pow(temp, 2)/norm : 0);
     result[j] = sqrt(result[j]/3)/n;
     free(product);
   }
 }
 
-SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_numCores, SEXP R_result){
+SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_weights, SEXP R_nRows, SEXP R_nVars, SEXP R_xIndices, SEXP R_yIndices, SEXP R_numCores, SEXP R_result){
   PROTECT(R_x = coerceVector(R_x, REALSXP));
   PROTECT(R_contNorms = coerceVector(R_contNorms, REALSXP));
   PROTECT(R_r = coerceVector(R_r, REALSXP));
+  PROTECT(R_weights = coerceVector(R_weights, REALSXP));
   PROTECT(R_nRows = coerceVector(R_nRows, INTSXP));
   PROTECT(R_nVars = coerceVector(R_nVars, INTSXP));
   PROTECT(R_xIndices = coerceVector(R_xIndices, INTSXP));
@@ -599,13 +617,14 @@ SEXP R_compute_norms_cont_cont(SEXP R_x, SEXP R_contNorms, SEXP R_r, SEXP R_nRow
   double *restrict x = REAL(R_x);
   double *restrict contNorms = REAL(R_contNorms);
   double *restrict r = REAL(R_r);
+  double *restrict weights = REAL(R_weights);
   int *restrict nRows = INTEGER(R_nRows);
   int *restrict nVars = INTEGER(R_nVars);
   int *restrict xIndices = INTEGER(R_xIndices);
   int *restrict yIndices = INTEGER(R_yIndices);
   int *restrict numCores = INTEGER(R_numCores);
   double *restrict result = REAL(R_result);
-  compute_norms_cont_cont(x, contNorms, r, nRows, nVars, xIndices, yIndices, numCores, result);
-  UNPROTECT(9);
+  compute_norms_cont_cont(x, contNorms, r, weights, nRows, nVars, xIndices, yIndices, numCores, result);
+  UNPROTECT(10);
   return R_result;
 }

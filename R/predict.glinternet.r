@@ -19,7 +19,16 @@ predict.glinternet = function(object, X, type=c("response", "link"), lambda=NULL
   n = nrow(X)
   pCat = sum(object$numLevels > 1)
   pCont = length(object$numLevels) - pCat
-  stopifnot(pCat+pCont==ncol(X))
+  if (!is.numeric(X) || ncol(X) != pCat+pCont || any(!is.finite(X)))
+    stop("X must be a finite numeric matrix with the fitted number of columns")
+  if (pCat > 0) {
+    categoricalX = X[, object$numLevels > 1, drop=FALSE]
+    categoricalLevels = object$numLevels[object$numLevels > 1]
+    validCategory = categoricalX == floor(categoricalX) & categoricalX >= 0 &
+      sweep(categoricalX, 2, categoricalLevels, "<")
+    if (any(!validCategory))
+      stop("categorical predictors must use fitted integer codes from 0 to numLevels-1")
+  }
   if (pCont > 0) Z = matrix(X[, object$numLevels==1], nrow=n) else Z = NULL
   if (pCat > 0){
     catIndices = which(object$numLevels > 1)
@@ -30,13 +39,26 @@ predict.glinternet = function(object, X, type=c("response", "link"), lambda=NULL
     levels = NULL
     Xcat = NULL
   }
+  predictionIndices = seq_along(object$betahat)
+  if (!is.null(lambda)) {
+    predictionIndices = match(lambda, object$lambda, 0)
+    if (any(predictionIndices==0)) stop("Input lambda sequence not used in model fitting.")
+  }
+  activeContPairs = unique(do.call(rbind, lapply(object$activeSet[predictionIndices], function(active) {
+    if (is.null(active) || is.null(active$contcont)) return(NULL)
+    cbind(which(object$numLevels==1)[active$contcont[,1]],
+          which(object$numLevels==1)[active$contcont[,2]])
+  })))
+  if (!is.null(activeContPairs)) validate_contcont_products(X, activeContPairs)
 
   #if lambda is null, predict on all the lambdas
   if (is.null(lambda)){  
-    return(sapply(1:length(object$betahat), function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family)))
+    result = sapply(seq_along(object$betahat), function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family))
+    if (is.null(dim(result))) result = matrix(result, ncol=length(object$betahat))
+    return(result)
   }
   #otherwise, match the lambda sequence with user's lambda
-  idx = match(lambda, object$lambda, 0)
-  if (any(idx==0)) stop("Input lambda sequence not used in model fitting.")
-  return(sapply(idx, function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family)))
+  result = sapply(predictionIndices, function(x) helper(object$activeSet[[x]], object$betahat[[x]], levels, object$family))
+  if (is.null(dim(result))) result = matrix(result, ncol=length(predictionIndices))
+  return(result)
 }

@@ -15,5 +15,9 @@ get_group_sizes = function(activeSet, numLevels){
   if (is.null(activeSet$catcont)) numCatCont = NULL
   else numCatCont = 2*numLevels[activeSet$catcont[, 1]]
   
-  c(numCat, numCont, numCatCat, numContCont, numCatCont)
+  sizes = c(numCat, numCont, numCatCat, numContCont, numCatCont)
+  if (any(!is.finite(sizes)) || any(sizes > .Machine$integer.max) ||
+      sum(as.double(sizes)) + 1 > .Machine$integer.max)
+    stop("active coefficient vector exceeds native integer limits")
+  as.integer(sizes)
 }

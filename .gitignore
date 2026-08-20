@@ -1,0 +1,7 @@
+/.Rlib/
+/*.Rcheck/
+/*.tar.gz
+/src/*.o
+/src/*.dll
+/src/*.so
+/src/*.def
