@@ -115,6 +115,38 @@ unreliable when that warning occurs.
 and lambda scale. Rescaling all weights by the same positive constant also
 leaves the result unchanged.
 
+## Reproducible weight demonstrations
+
+The test suite includes two small demonstrations of the weight semantics. The
+first compares the preserved legacy interface (weights omitted) with explicit
+all-one weights for both `glinternet` and fixed-fold `glinternet.cv` fits. Their
+paths, fitted values, cross-validation losses, standard errors, and selected
+lambdas agree to numerical precision.
+
+The second gives one extreme observation virtually all of the weight. A large
+lambda intentionally leaves only the unpenalized intercept, making the effect
+transparent:
+
+```r
+nOrdinary <- 20
+Xdemo <- matrix(c(seq(-1, 1, length.out = nOrdinary), 8), ncol = 1)
+Ydemo <- c(seq(-0.2, 0.2, length.out = nOrdinary), 100)
+wDemo <- c(rep(1e-6, nOrdinary), 1e6)
+
+equalFit <- glinternet(Xdemo, Ydemo, 1, lambda = 100)
+weightedFit <- glinternet(Xdemo, Ydemo, 1, lambda = 100, weights = wDemo)
+
+round(c(
+  equal_weight_prediction = tail(equalFit$fitted[, 1], 1),
+  dominant_weight_prediction = tail(weightedFit$fitted[, 1], 1)
+), 3)
+# equal_weight_prediction    dominant_weight_prediction
+#                   4.762                       100.000
+```
+
+See `tests/testthat/test-weight-demonstrations.R` for the complete direct-fit
+and cross-validation assertions.
+
 `screenLimit` retains the package's original heuristic behavior: it restricts
 the interaction universe for speed and memory use. KKT checks cover retained
 candidates and establish approximate first-order optimality for path entries
