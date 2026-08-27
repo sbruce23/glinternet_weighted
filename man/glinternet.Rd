@@ -63,7 +63,7 @@ numCores = 1, weights = NULL)
   \item{verbose}{Prints progress. False by default.}
   \item{numCores}{Number of threads to run. For this to work, the
     package must be installed with OpenMP enabled. Default is 1 thread.}
-  \item{weights}{Optional nonnegative case/frequency weights, one per
+  \item{weights}{Optional nonnegative case/importance weights, one per
     observation. Weights must be finite and have positive total. They are
     normalized internally to sum to the number of observations.}
 }
@@ -83,7 +83,7 @@ numCores = 1, weights = NULL)
   must be finite. A fit also errors if a nonzero solver-scale interaction cannot
   be represented by finite coefficients on the original predictor scale.
 
-  The supplied values are case/frequency weights, not analytic inverse-variance
+  The supplied values are case/importance weights, not analytic inverse-variance
   weights. If \eqn{w_i} is the supplied weight, the implementation uses
   \eqn{v_i = n w_i / \sum_j w_j} and minimizes
   \eqn{n^{-1}\sum_i v_i L(y_i,\eta_i) + \lambda\sum_g ||\beta_g||_2}.
@@ -97,12 +97,19 @@ numCores = 1, weights = NULL)
   by the same positive scalar leaves the fitted path unchanged. Omitting
   weights, or supplying all-one weights, retains the original unweighted
   objective and lambda scale.
+  Literal integer replication changes retained row count and native group
+  geometry. If integer weights expand \eqn{n} unique rows to \eqn{N} replicated
+  rows, equivalence uses replicated-data penalty
+  \eqn{lambda[rep] = lambda sqrt(n/N)}, not the same numeric lambda.
   Binomial fits require both response classes to have positive total weight.
 
   When \code{screenLimit} is used, it heuristically restricts the interaction
   candidate universe. Consequently, the result can differ from an unrestricted
-  fit; for path entries with \code{converged = TRUE}, KKT checks and approximate
-  first-order optimality apply within the retained candidates only.
+  fit. Inactive retained groups receive a KKT screen. The current native
+  convergence diagnostic checks the active-group gradient norm but not the full
+  vector direction condition, so \code{converged = TRUE} is not by itself a
+  complete KKT certificate. Use tight tolerances and an independent full-vector
+  check when numerical certification is important.
 }
 \value{
   An object of class \code{glinternet} with the components
@@ -112,9 +119,12 @@ numCores = 1, weights = NULL)
     likely to stop before all \code{nLambda} models have been fit.}
   \item{lambda}{The actual \code{lambda} sequence used.}
   \item{objValue}{Objective values for each lambda.}
-  \item{converged}{Logical vector indicating whether FISTA converged for each
+  \item{converged}{Logical vector indicating whether the native FISTA convergence
+    diagnostic passed for each
     fitted lambda. If an iteration limit is reached, the fit is returned with
-    the corresponding value set to \code{FALSE} and a warning is issued.}
+    the corresponding value set to \code{FALSE} and a warning is issued. This
+    diagnostic is not a complete active-group vector KKT certificate; see
+    Details.}
   \item{iterations}{Cumulative FISTA iteration count for each fitted lambda,
     including any KKT repair solves.}
   \item{activeSet}{A list (of length \code{lambda}) of the variables found. Internally, the

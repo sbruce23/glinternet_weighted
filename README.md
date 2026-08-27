@@ -44,8 +44,8 @@ fit <- glinternet(
 )
 ```
 
-Weights are case/frequency weights: they control each row's contribution to the
-likelihood. They are not inverse-variance analytic weights. Weights must be
+Weights are case/importance weights: they control each row's contribution to the
+empirical loss. They are not inverse-variance analytic weights. Weights must be
 finite and nonnegative and must have a positive total. Zero weights are allowed
 and those rows make no contribution to fitting, screening, preprocessing
 moments, KKT checks, or validation loss through their values. Retained row count
@@ -54,6 +54,13 @@ zero-weight row is not generally equivalent at the same numeric lambda.
 Internally, weights are normalized to sum to the number of observations, so
 multiplying all supplied weights by the same positive constant does not change
 the fitted path.
+
+The word *frequency* requires a qualification. Literal integer replication
+changes the retained row count and therefore the package's group geometry. A
+weighted fit on `n` unique rows with integer weights is consequently equivalent
+to an `N = sum(weights)`-row replicated fit after changing the replicated-fit
+penalty to `lambda * sqrt(n / N)`, not at the same numeric `lambda`. See
+[Weighted methodology](docs/weighted-methodology.md#case-importance-weights-and-frequency-replication).
 
 For normalized weights $\widetilde w_i = n w_i / \sum_i w_i$, the fitted
 Gaussian path minimizes
@@ -94,15 +101,18 @@ then combined in proportion to their validation weight masses, which is the
 weighted loss across all out-of-fold predictions. Every validation fold must
 have positive weight mass.
 
-`cvErrStd` is a standard error across fold means. If
+`cvErrStd` is a fold-dispersion standard-error heuristic. If
 $a_k=W_k/\sum_j W_j$, the implementation uses effective fold count
 $K_{eff}=1/\sum_k a_k^2$, weighted variance
 $s^2=\sum_k a_k(L_k-\bar L)^2/(1-\sum_k a_k^2)$, and
-$\operatorname{SE}=\sqrt{s^2/K_{eff}}$. With equal fold masses this is
+$\mathrm{SE}=\sqrt{s^2/K_{eff}}$. With equal fold masses this is
 `sd(fold_loss) / sqrt(nFolds)`. The one-standard-error choice is the largest
 lambda whose loss is no more than the minimum loss plus the standard error at
 the minimum. Supplying `foldid` makes the split reproducible and enables direct
 comparisons across fits.
+
+Because fold losses share overlapping training samples, `cvErrStd` should not be
+interpreted as a formal sampling standard error for prediction risk.
 
 For binomial cross-validation, choose stratified folds so that both response
 classes have positive total training weight in every fold.
@@ -148,12 +158,26 @@ See `tests/testthat/test-weight-demonstrations.R` for the complete direct-fit
 and cross-validation assertions.
 
 `screenLimit` retains the package's original heuristic behavior: it restricts
-the interaction universe for speed and memory use. KKT checks cover retained
-candidates and establish approximate first-order optimality for path entries
-with `converged = TRUE`, so screened and unrestricted fits are not guaranteed
-to match.
+the interaction universe for speed and memory use, so screened and unrestricted
+fits are not guaranteed to match. Inactive retained candidates receive a KKT
+screen. The current native `converged` diagnostic compares the norm of each
+active-group gradient with `lambda`; it does not certify the required vector
+direction condition. Use a tight `tol`, inspect the reported convergence flags,
+and apply an independent full-vector KKT check when numerical certification is
+important. This limitation and its consequences are described in the
+[mathematical and statistical audit](docs/mathematical-statistical-audit.md).
 
 See `?glinternet` and `?glinternet.cv` for the full API and returned objects.
+
+## Methodology and validation notes
+
+- [Weighted methodology](docs/weighted-methodology.md) states the estimand,
+  objective, hierarchy construction, preprocessing, lambda path, and weighted
+  cross-validation equations.
+- [Mathematical and statistical audit](docs/mathematical-statistical-audit.md)
+  separates verified properties, limitations, and recommended safeguards.
+- [Validation guide](docs/validation.md) describes unit tests and a target-risk
+  simulation that demonstrates how observation weights change estimation.
 
 ## Reference
 
