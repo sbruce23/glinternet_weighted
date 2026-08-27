@@ -27,7 +27,7 @@ verbose=FALSE, numCores=1, weights=NULL, foldid=NULL)
   \item{maxIter}{\code{maxIter} as in \code{glinternet}.}
   \item{verbose}{\code{verbose} as in \code{glinternet}.}
   \item{numCores}{\code{numCores} as in \code{glinternet}.}
-  \item{weights}{Optional nonnegative case/frequency weights as in
+  \item{weights}{Optional nonnegative case/importance weights as in
     \code{glinternet}.}
   \item{foldid}{Optional vector of integer fold labels, one per observation.
     At least two nonempty folds are required and each fold must have positive
@@ -38,7 +38,7 @@ verbose=FALSE, numCores=1, weights=NULL, foldid=NULL)
   omitted. Each training fit renormalizes its own training weights. Validation
   losses are weighted by observation weight and combined by fold weight mass,
   so \code{cvErr} is the observation-weighted loss across all out-of-fold
-  predictions. A weighted standard error across fold means is also computed;
+  predictions. A weighted fold-dispersion standard-error heuristic is also computed;
   with equal fold masses this reduces to the fold-loss standard deviation
   divided by the square root of the number of folds. The one-standard-error
   choice is the largest lambda with error no greater than the minimum error plus
@@ -68,8 +68,9 @@ verbose=FALSE, numCores=1, weights=NULL, foldid=NULL)
     error. This will always be at least as large as \code{lambdaHat}.}
   \item{cvErr}{The vector of cross validation errors. Same length as
     \code{lambda}.}
-  \item{cvErrStd}{Weighted standard error for cross-validation errors across
-    the \code{nFolds} fold means.}
+  \item{cvErrStd}{Weighted fold-dispersion standard-error heuristic across
+    the \code{nFolds} fold means. It supports the one-standard-error selection
+    rule but is not a formal sampling standard error for prediction risk.}
   \item{family}{The response type.}
   \item{numLevels}{Input number of levels for each variable.}
   \item{nFolds}{The number of folds used.}
@@ -84,11 +85,12 @@ verbose=FALSE, numCores=1, weights=NULL, foldid=NULL)
   \item{foldIterations}{Integer matrix of cumulative FISTA iteration counts for
     every fold/lambda training fit, with rows corresponding to normalized
     \code{foldid} labels and columns to \code{lambda}.}
-  \item{converged}{Whether the full-data fit converged at \code{lambdaHat}.}
+  \item{converged}{Whether the native full-data convergence diagnostic passed at
+    \code{lambdaHat}; see \code{glinternet} for its KKT qualification.}
   \item{iterations}{Cumulative FISTA iterations for the full-data fit at
     \code{lambdaHat}.}
-  \item{converged1Std}{Whether the full-data fit converged at
-    \code{lambdaHat1Std}.}
+  \item{converged1Std}{Whether the native full-data convergence diagnostic passed
+    at \code{lambdaHat1Std}; see \code{glinternet} for its KKT qualification.}
   \item{iterations1Std}{Cumulative FISTA iterations for the full-data fit at
     \code{lambdaHat1Std}. Convergence information for all full-data path entries
     is also available in \code{glinternetFit$converged} and
